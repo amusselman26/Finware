@@ -11,5 +11,9 @@ Breakout Components:
 7. Adafruit MicroSD Breakout
 8. Ublox ANN-MB-00 GNSS Antenna
 
+## Repository Structure
+- `firmware/` – All code for flight computer firmware.
+- `hardware/` – Schematics, PCB layouts, fab notes.
+- `docs/` – Reference docs, test plans, logs, design notes.
 
 
