@@ -3,7 +3,7 @@
 This example shows how to connect the LPS22 to the Feather over I2C.
 
 **Wiring:**
-![Wiring Diagram][LPS22wiring.jpg]
+![Wiring Diagram][LPS22_wiring.jpg]
 
 **Expected Output**
 LPS22 Found!
