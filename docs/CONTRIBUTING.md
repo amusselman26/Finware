@@ -1,4 +1,5 @@
-
+## Update Checklist
+![Update Checklist](docs/UPDATE_CHECKLIST.md)
 ## Code Style
 - **Language**: C++17 for firmware, Python 3.x for tooling.
 - **Formatting**: Use `clang-format` with the repo's `.clang-format` file before committing.
