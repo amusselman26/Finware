@@ -1,9 +1,3 @@
-# Contributing Guidelines
-
-Thank you for contributing to the Flight Computer project!  
-This document outlines how we work together and keep the project maintainable as it grows.
-
----
 
 ## Code Style
 - **Language**: C++17 for firmware, Python 3.x for tooling.
