@@ -11,3 +11,4 @@ Next: SD SPI test
 4. Test barometer and BNO085 on I2C bus
 5. Order GNSS
 6. Test LoRa
+7. Create I/O table
