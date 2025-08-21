@@ -1,19 +1,10 @@
-// Feather STM32F405 + Adafruit LPS22 (I2C) - Pressure/Temp demo
-// Wiring (I2C mode):
-//   LPS22 VIN  -> Feather 3V
-//   LPS22 GND  -> Feather GND
-//   LPS22 SCK  -> Feather SCL
-//   LPS22 SDI  -> Feather SDA
-//   LPS22 CS   -> 3V  (forces I2C mode)
-//   LPS22 SDO  -> GND (addr 0x5C)  OR  3V (addr 0x5D)
-//   INT optional (not used here)
-
 #include <Wire.h>
 #include <Adafruit_LPS2X.h>
 #include <Adafruit_Sensor.h>
 
 // ---- Pick the I2C address based on your SDO wiring ----
 #define LPS22_I2C_ADDR 0x5C   // use 0x5D if SDO tied to 3V
+
 
 Adafruit_LPS22 lps;
 
@@ -62,12 +53,18 @@ void setup() {
 
 void loop() {
   sensors_event_t temp, pressure;
+  float P0 = 1013.25;
+  float p = pressure.pressure;
+  float altitude, exponent;
   if (lps.getEvent(&pressure, &temp)) {
+    exponent = pow (p / P0, 0.1902);
+    altitude = 44330 * (1 - exponent);
     Serial.print("Temperature: ");
     Serial.print(temp.temperature, 2);
     Serial.print(" C   |   Pressure: ");
     Serial.print(pressure.pressure, 2);
-    Serial.println(" hPa");
+    Serial.print(" hPa  |  Altitude: ");
+    Serial.println(altitude, DEC);
   } else {
     Serial.println("Read failed");
   }
