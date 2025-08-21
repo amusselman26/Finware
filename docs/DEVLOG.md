@@ -12,3 +12,7 @@ Next: SD SPI test
 5. Order GNSS
 6. Test LoRa
 7. Create I/O table
+
+## 2025-08-21
+Goal: Integrate BNO085 with LPS22
+Next: Develop testing tools, test drift of IMU and noise of LPS22
