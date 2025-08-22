@@ -1,21 +1,15 @@
-// Feather STM32F405 + Adafruit LPS22 (I2C) - Pressure/Temp demo
-// Wiring (I2C mode):
-//   LPS22 VIN  -> Feather 3V
-//   LPS22 GND  -> Feather GND
-//   LPS22 SCK  -> Feather SCL
-//   LPS22 SDI  -> Feather SDA
-//   LPS22 CS   -> 3V  (forces I2C mode)
-//   LPS22 SDO  -> GND (addr 0x5C)  OR  3V (addr 0x5D)
-//   INT optional (not used here)
-
 #include <Wire.h>
 #include <Adafruit_LPS2X.h>
 #include <Adafruit_Sensor.h>
 
 // ---- Pick the I2C address based on your SDO wiring ----
-#define LPS22_I2C_ADDR 0x5C   // use 0x5D if SDO tied to 3V
+#define LPS22_I2C_ADDR 0x5D   // use 0x5D if SDO tied to 3V
+
 
 Adafruit_LPS22 lps;
+
+// Global variable for atmospheric pressure calibration
+float P0;
 
 void setup() {
   // Bring up USB CDC serial (STM32F405 needs a moment to enumerate)
@@ -30,7 +24,7 @@ void setup() {
   Wire.setClock(100000);   // start at 100 kHz for robust bring-up
   delay(50);               // allow sensor time to boot
 
-  // Try explicit address first (avoids flaky auto-detect timing)
+  // Try explicit address first
   if (!lps.begin_I2C(LPS22_I2C_ADDR)) {
     // Fallback: try the alternate address in case SDO is the other way
     uint8_t alt = (LPS22_I2C_ADDR == 0x5C) ? 0x5D : 0x5C;
@@ -47,29 +41,49 @@ void setup() {
   Wire.setClock(400000);   // 400 kHz Fast-mode I2C
 
   // Set data rate
+  // Data Rates for LPS22: 1, 10, 25, 50, 75 Hz
   lps.setDataRate(LPS22_RATE_10_HZ);
-  Serial.print("Data rate set to: ");
-  switch (lps.getDataRate()) {
-    case LPS22_RATE_ONE_SHOT: Serial.println("One Shot / Power Down"); break;
-    case LPS22_RATE_1_HZ:     Serial.println("1 Hz");                 break;
-    case LPS22_RATE_10_HZ:    Serial.println("10 Hz");                break;
-    case LPS22_RATE_25_HZ:    Serial.println("25 Hz");                break;
-    case LPS22_RATE_50_HZ:    Serial.println("50 Hz");                break;
-    case LPS22_RATE_75_HZ:    Serial.println("75 Hz");                break;
-    default:                  Serial.println("?");                     break;
+
+  sensors_event_t pressure, temp;
+  unsigned long start_time =  millis();
+  unsigned long loop_duration = 5000; // loop for 5 seconds
+  float calib_pressure, sum_pressure = 0;
+  unsigned int num_of_loops = 0;
+
+  Serial.println("Calibrating...");
+  
+  // Average current temperature and set as atmospheric
+  if (lps.getEvent(&pressure, &temp)) {
+    for (int i = 0; (millis() - start_time) < loop_duration; i++) {
+      calib_pressure = pressure.pressure;
+      sum_pressure += calib_pressure;
+      num_of_loops += 1;
+      delay(50);
+    }
   }
+  P0 = sum_pressure / num_of_loops;
+  Serial.print("Atmospheric Pressure: ");
+  Serial.println(P0);
+
 }
 
 void loop() {
   sensors_event_t temp, pressure;
+  float p = pressure.pressure;
+  float altitude, exponent;
   if (lps.getEvent(&pressure, &temp)) {
+    // Formula for converting pressure in hPa to altitude in meters
+    exponent = pow (p / P0, 0.1902);
+    altitude = 44330 * (1 - exponent);
     Serial.print("Temperature: ");
     Serial.print(temp.temperature, 2);
     Serial.print(" C   |   Pressure: ");
     Serial.print(pressure.pressure, 2);
-    Serial.println(" hPa");
+    Serial.print(" hPa  |  Altitude: ");
+    Serial.println(altitude, 2);
   } else {
     Serial.println("Read failed");
   }
   delay(100);
 }
+
