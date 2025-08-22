@@ -2,28 +2,12 @@ This document describes the repository structure, workflows, and key practices f
 
 ## Repository Structure
 - flight-computer/
-- ├─ firmware/ # PlatformIO project
-- │ ├─ src/ # Source code
-- │ │ ├─ app/ # High-level logic
-- │ │ ├─ drivers/ # Sensor/radio/storage drivers
-- │ │ ├─ hal/ # Pin mapping, hardware abstraction
-- │ │ ├─ util/ # Shared utilities
-- │ │ └─ config/ # Build-time config
-- │ ├─ include/ # Public headers
+- ├─ firmware/ 
 - │ ├─ examples/ # Bring-up and test sketches
 - ├─ hardware/ # Schematics, PCB, BOM
 - ├─ docs/ # Project documentation
 - ├─ tools/ # Scripts and utilities
 - └─ runs/ # Captured test runs and logs
-
-## Build & Flash
-- **PlatformIO** is the primary build system.
-- Target board: `adafruit_feather_stm32f405_express`
-- Example build:
-  ```bash
-  pio run
-  pio run -t upload
-  pio device monitor
 
 # Adding New Hardware
 1. Create a driver in src/drivers/ with a minimal public API.
