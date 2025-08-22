@@ -16,3 +16,7 @@ Next: SD SPI test
 ## 2025-08-21
 Goal: Integrate BNO085 with LPS22
 Next: Develop testing tools, test drift of IMU and noise of LPS22
+
+##2025-08-21
+Goal: Add initial atmospheric pressure calibration to lps22 example
+Next: Test BNO and LPS on SPI - SPI should be favored over I2C
