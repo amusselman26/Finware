@@ -1,6 +1,6 @@
 ## Software Architecture
 
-![Software_Architecture](Finware/docs/Software_Architecture.png)
+![Software_Architecture](../../docs/Software_Architecture.png)
 
 ## Folder Structure
  - App: Contains the main Arduino sketch and application-level logic. Includes state machine, guidance algorithms, mixer for servos, etc.
