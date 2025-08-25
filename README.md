@@ -16,4 +16,7 @@ Breakout Components:
 - `hardware/` – Schematics, PCB layouts, fab notes.
 - `docs/` – Reference docs, test plans, logs, design notes.
 
+## Setup
+1. https://learn.adafruit.com/adafruit-stm32f405-feather-express/arduino-ide-setup
+
 
