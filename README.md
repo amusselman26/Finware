@@ -20,4 +20,7 @@ Breakout Components:
 1. https://learn.adafruit.com/adafruit-stm32f405-feather-express/arduino-ide-setup
 2. Download: https://www.st.com/en/development-tools/stm32cubeprog.html
 
+## Software Architecture
+![Software_Architecture](docs/Software_Architecture.png)
+
 
