@@ -26,3 +26,8 @@ Goal: create system architecture and BNO085 driver
 Issue: Arduino linker not recognizing .cpp files in external directories
 Fix: Main ino file should be placed in sketch folder with same name. header and .cpp files should be in subdirectories. This will require changing the src directory. 
 Next: Develop LPS22 driver, develop testing tools, test drift and noise of sensors. Implement LoRa module.
+
+## 2025-08-26
+Issue: Arduino linker can not find files in subdirectories of either the project or libraries folder.
+Fix: Looking into usage of platformio. Currently cannot upload code through platformio
+Next: Run feather test code on platformio
