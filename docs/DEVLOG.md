@@ -17,6 +17,17 @@ Next: SD SPI test
 Goal: Integrate BNO085 with LPS22
 Next: Develop testing tools, test drift of IMU and noise of LPS22
 
-##2025-08-21
+## 2025-08-21
 Goal: Add initial atmospheric pressure calibration to lps22 example
 Next: Test BNO and LPS on SPI - SPI should be favored over I2C
+
+## 2025-08-25
+Goal: create system architecture and BNO085 driver
+Issue: Arduino linker not recognizing .cpp files in external directories
+Fix: Main ino file should be placed in sketch folder with same name. header and .cpp files should be in subdirectories. This will require changing the src directory. 
+Next: Develop LPS22 driver, develop testing tools, test drift and noise of sensors. Implement LoRa module.
+
+## 2025-08-26
+Issue: Arduino linker can not find files in subdirectories of either the project or libraries folder.
+Fix: Looking into usage of platformio. Currently cannot upload code through platformio
+Next: Run feather test code on platformio
