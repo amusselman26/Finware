@@ -15,5 +15,13 @@ Breakout Components:
 - `firmware/` – All code for flight computer firmware.
 - `hardware/` – Schematics, PCB layouts, fab notes.
 - `docs/` – Reference docs, test plans, logs, design notes.
+- `model/` - Simulink model and related matlab functions.
+
+## Setup
+1. https://learn.adafruit.com/adafruit-stm32f405-feather-express/arduino-ide-setup
+2. Download: https://www.st.com/en/development-tools/stm32cubeprog.html
+
+## Software Architecture
+![Software_Architecture](docs/Software_Architecture.png)
 
 
