@@ -1,7 +1,8 @@
 #pragma once
 #include <Arduino.h>
 #include <Adafruit_BNO08x.h>
-#include <src/platform/Clock.hpp>
+
+#include "platform/Clock.hpp"
 
 // Minimal POD for "latest sample"
 struct IMU_Sample {

@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_LPS22.h>
+#include <Adafruit_LPS2X.h>
 
 #include "platform/Clock.hpp"
 #include "sensors/SensorTypes.hpp"
@@ -25,7 +25,7 @@ public:
     explicit Baro_LPS22(uint8_t i2c_addr = 0x5D);
 
     // Begin I2C comms at specified data rate (1, 10, 25, 50, 75 Hz)
-    bool begin(lps22_data_rate_t data_rate = LPS22_RATE_10_HZ);
+    bool begin(lps22_rate_t data_rate = LPS22_RATE_10_HZ);
 
     // Read at most one sensor event; update latest sample
     void tick();
@@ -37,7 +37,7 @@ public:
     bool ok() const { return _healthy; }
     const BARO_Sample& latest() const { return _latest; }
     uint32_t sequence() const { return _seq; }
-    lps22_data_rate_t dataRate() const { return _data_rate; }
+    lps22_rate_t dataRate() const { return _data_rate; }
 
     const BARO_Health& health() const { return _health; }
 
@@ -53,7 +53,7 @@ private:
     // Driver
     Adafruit_LPS22 _lps22;
     const uint8_t _i2c_addr;
-    lps22_data_rate_t _data_rate = LPS22_RATE_10_HZ;
+    lps22_rate_t _data_rate = LPS22_RATE_10_HZ;
 };
 
 } // namespace finware
