@@ -7,7 +7,6 @@ bool IMU_BNO085::begin(sh2_SensorId_t report, uint32_t reportIntervalUs) {
   _reportType = report;
   _reportIntervalUs = reportIntervalUs;
 
-  // SPI bring-up (mirrors your demo’s begin_SPI)
   // Note: Adafruit_BNO08x::begin_SPI(cs, intPin) ignores reset if given in ctor.
   if (!_bno.begin_SPI(_cs, _int)) {
     _healthy = false;
