@@ -1,5 +1,6 @@
 #include "IMU_BNO085.hpp"
 
+
 IMU_BNO085::IMU_BNO085(uint8_t csPin, uint8_t intPin, int8_t resetPin)
 : _cs(csPin), _int(intPin), _rst(resetPin), _bno(resetPin) {}
 
@@ -7,7 +8,6 @@ bool IMU_BNO085::begin(sh2_SensorId_t report, uint32_t reportIntervalUs) {
   _reportType = report;
   _reportIntervalUs = reportIntervalUs;
 
-  // SPI bring-up (mirrors your demo’s begin_SPI)
   // Note: Adafruit_BNO08x::begin_SPI(cs, intPin) ignores reset if given in ctor.
   if (!_bno.begin_SPI(_cs, _int)) {
     _healthy = false;
@@ -49,7 +49,7 @@ void IMU_BNO085::tick() {
       case SH2_ARVR_STABILIZED_RV: {
         if (_reportType != SH2_ARVR_STABILIZED_RV) break;
         const auto &rv = _sv.un.arvrStabilizedRV;
-        _latest.t_us = micros();
+        _latest.t_us = finware::Clock::now();
         _latest.q[0] = rv.real; _latest.q[1] = rv.i; _latest.q[2] = rv.j; _latest.q[3] = rv.k;
         _latest.calib = _sv.status;           // 0..3
         _latest.seq = ++_seq;
@@ -58,7 +58,7 @@ void IMU_BNO085::tick() {
       case SH2_GYRO_INTEGRATED_RV: {
         if (_reportType != SH2_GYRO_INTEGRATED_RV) break;
         const auto &rv = _sv.un.gyroIntegratedRV;
-        _latest.t_us = micros();
+        _latest.t_us = finware::Clock::now();
         _latest.q[0] = rv.real; _latest.q[1] = rv.i; _latest.q[2] = rv.j; _latest.q[3] = rv.k;
         _latest.calib = _sv.status;
         _latest.seq = ++_seq;

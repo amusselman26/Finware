@@ -2,9 +2,11 @@
 #include <Arduino.h>
 #include <Adafruit_BNO08x.h>
 
+#include "platform/Clock.hpp"
+
 // Minimal POD for "latest sample"
 struct IMU_Sample {
-  uint32_t t_us;       // micros() when sample captured
+  uint64_t t_us;       // micros() when sample captured
   float q[4];          // quaternion (w, x, y, z)
   uint8_t calib;       // 0..3 from sensorValue.status
   uint32_t seq;        // increments on each fresh sample

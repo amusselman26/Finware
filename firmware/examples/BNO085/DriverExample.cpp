@@ -1,4 +1,5 @@
 // Finware.ino  — minimal example using IMU_BNO085 driver
+// This must be copied into main.cpp of src before runtime. Storing example here prevents multiple definitions of setup and loop.
 #include <Arduino.h>
 #include "IMU_BNO085.hpp"
 
