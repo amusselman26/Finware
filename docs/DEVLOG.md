@@ -37,3 +37,7 @@ Goal: Switch to platformio, test SparkFun GNSS over I2C.
 Issue: platformio not reading serial messages on COM5.
 Fix: Added build_flags = -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC.
 Next: Add wrappers for LPS22 and GPS modules.
+
+## 2025-09-04
+Goal: Add LPS22 wrapper
+Next: Test LPS22 wrapper example
