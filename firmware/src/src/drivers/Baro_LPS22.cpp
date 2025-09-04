@@ -33,7 +33,7 @@ void Baro_LPS22::tick() {
 }
 
 void Baro_LPS22::calibrateAtm() {
-    if (!_healthy) return;
+    Baro_LPS22::tick();
 
     // Use latest pressures as sea-level reference
     if (_latest.pressure_hPa > 0) {

@@ -24,7 +24,7 @@ public:
     explicit Baro_LPS22(uint8_t i2c_addr = 0x5D);
 
     // Begin I2C comms at specified data rate (1, 10, 25, 50, 75 Hz)
-    bool begin(lps22_rate_t data_rate = LPS22_RATE_10_HZ);
+    bool begin(lps22_rate_t data_rate);
 
     // Read at most one sensor event; update latest sample
     void tick();
@@ -56,7 +56,7 @@ private:
     // Driver
     Adafruit_LPS22 _lps22;
     const uint8_t _i2c_addr;
-    lps22_rate_t _data_rate = LPS22_RATE_10_HZ;
+    lps22_rate_t _data_rate;
 };
 
 } // namespace finware
