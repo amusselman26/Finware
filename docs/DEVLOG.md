@@ -39,5 +39,6 @@ Fix: Added build_flags = -D PIO_FRAMEWORK_ARDUINO_ENABLE_CDC.
 Next: Add wrappers for LPS22 and GPS modules.
 
 ## 2025-09-04
-Goal: Add LPS22 wrapper
-Next: Test LPS22 wrapper example
+Goal: Add LPS22 wrapper and test
+Issue: Initial altitude in the -1000s, added if statement in example usage to recalibrate atm_pressure if alt less than -100 m.
+Next: Add wrapper for GPS module
