@@ -17,9 +17,30 @@ Breakout Components:
 - `docs/` – Reference docs, test plans, logs, design notes.
 - `model/` - Simulink model and related matlab functions.
 
-## Setup
-1. https://learn.adafruit.com/adafruit-stm32f405-feather-express/arduino-ide-setup
-2. Download: https://www.st.com/en/development-tools/stm32cubeprog.html
+## Requirements
+- [VS Code](https://code.visualstudio.com/) + [PlatformIO IDE extension](https://platformio.org/install/ide?install=vscode)  
+- Board: **Adafruit Feather STM32F405 Express** (`adafruit_feather_f405`)  
+- USB DFU drivers:  
+  - Windows: [STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html)  
+  - Linux/macOS: install `dfu-util`
+
+## How to Build & Upload
+1. Navigate to the firmware/src folder:
+   ```bash
+   cd Finware/firmware/src
+2. Build
+   ```bash
+   pio run
+3. Put the board in DFU mode (BOOT0 -> 3.3V, press RESET).
+4. Upload
+   ```bash
+   pio run -t upload
+5. Open serial monitor
+  ```bash
+  pio device monitor
+  ```
+Serial runs at 115200 on COM5. Steps 1-5 may also be done through VS Code and Platformio GUI.
+   
 
 ## Software Architecture
 ![Software_Architecture](docs/Software_Architecture.png)
