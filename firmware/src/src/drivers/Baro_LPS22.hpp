@@ -16,7 +16,6 @@ struct BARO_Sample {
     float temperature_C;   // temperature in Celsius
     float altitude_m;      // derived altitude (optional, can be NAN)
     uint32_t seq;          // monotonically increasing
-    uint32_t valid;        // validity flags (SAMPLE_VALID_PRESS, SAMPLE_VALID_TEMP)
 };
 
 class Baro_LPS22 {
@@ -43,9 +42,13 @@ public:
 
 private:
     // State
-    BARO_Sample _latest{0, 0, 0, 0, 0, 0};
+    BARO_Sample _latest{0, 0, 0, 0, 0};
     volatile uint32_t _seq = 0;
     bool _healthy = false;
+    float _sea_level_hPa = 1013.25f; // default standard atmosphere
+
+    // pressure to altitude conversion
+    static float pressureToAltitude(float pressure_hPa, float seaLevel_hPa);
 
     // Health counters
     BARO_Health _health{};
