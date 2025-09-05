@@ -8,8 +8,7 @@ Breakout Components:
 4. AdaFruit LPS22 Barometer
 5. AdaFruit RFM95W LoRa
 6. AdaFruit PowerBoost 5V Buck Converter
-7. Adafruit MicroSD Breakout
-8. Ublox ANN-MB-00 GNSS Antenna
+7. Ublox ANN-MB-00 GNSS Antenna
 
 ## Repository Structure
 - `firmware/` – All code for flight computer firmware.
