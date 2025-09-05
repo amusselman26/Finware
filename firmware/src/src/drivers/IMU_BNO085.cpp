@@ -1,5 +1,6 @@
 #include "IMU_BNO085.hpp"
 
+using namespace finware;
 
 IMU_BNO085::IMU_BNO085(uint8_t csPin, uint8_t intPin, int8_t resetPin)
 : _cs(csPin), _int(intPin), _rst(resetPin), _bno(resetPin) {}
