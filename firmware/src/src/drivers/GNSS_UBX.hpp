@@ -31,7 +31,7 @@ class GNSS_UBX {
     // Read at most one sensor event; update latest sample
     void tick();
 
-    void calibrateAltitude(float zero_alt_m);
+    void calibrateAltitude();
 
     // Diagnostics
     bool ok() const {  return _healthy;  }
@@ -41,6 +41,8 @@ class GNSS_UBX {
 
     // Not yet implemented
     const GPS_Health& health() const {  return _health;  }
+
+    float zeroAltitude() const {  return _zero_alt_m;  }
 
     private:
     // State
