@@ -1,100 +1,113 @@
-/*
-  SD card test
-
- This example shows how use the utility libraries on which the'
- SD library is based in order to get info about your SD card.
- Very useful for testing a card when you're not sure whether its working or not.
-
-  * SD card attached
-
- */
-// include the SD library:
+// Minimal FatFs mount diagnostic for STM32 (STM32Duino core)
+#include <Arduino.h>
 #include <STM32SD.h>
 
-// If SD card slot has no detect pin then define it as SD_DETECT_NONE
-// to ignore it. One other option is to call 'card.init()' without parameter.
-#ifndef SD_DETECT_PIN
-#define SD_DETECT_PIN SD_DETECT_NONE
-#endif
+// Pull in FatFs types
+extern "C" {
+  #include "ff.h"          // FRESULT, FATFS, f_mount, f_opendir, f_readdir, etc.
+  #include "ff_gen_drv.h"  // FATFS_LinkDriver
+  // The STM32 core provides an SD disk I/O driver. These names are common:
+  DSTATUS SD_initialize(BYTE);     // declared in sd_diskio.c
+  DRESULT SD_read(BYTE*, LBA_t, UINT);
+  DRESULT SD_write(const BYTE*, LBA_t, UINT);
+  DRESULT SD_ioctl(BYTE, void*);
+}
 
-Sd2Card card;
-SdFatFs fatFs;
+// These are provided by STM32 core’s SD driver glue:
+extern "C" int FATFS_LinkDriver(const Diskio_drvTypeDef *drv, char *path);
+extern "C" const Diskio_drvTypeDef SD_Driver;
+
+// Global FatFs objects
+static FATFS fs;          // Work area (filesystem object)
+static char  sdPath[4];   // Logical drive path like "0:"
+static bool  linked = false;
+
+static const __FlashStringHelper* frName(FRESULT fr) {
+  switch (fr) {
+    case FR_OK:                  return F("FR_OK");
+    case FR_DISK_ERR:            return F("FR_DISK_ERR");
+    case FR_INT_ERR:             return F("FR_INT_ERR");
+    case FR_NOT_READY:           return F("FR_NOT_READY");
+    case FR_NO_FILE:             return F("FR_NO_FILE");
+    case FR_NO_PATH:             return F("FR_NO_PATH");
+    case FR_INVALID_NAME:        return F("FR_INVALID_NAME");
+    case FR_DENIED:              return F("FR_DENIED");
+    case FR_EXIST:               return F("FR_EXIST");
+    case FR_INVALID_OBJECT:      return F("FR_INVALID_OBJECT");
+    case FR_WRITE_PROTECTED:     return F("FR_WRITE_PROTECTED");
+    case FR_INVALID_DRIVE:       return F("FR_INVALID_DRIVE");
+    case FR_NOT_ENABLED:         return F("FR_NOT_ENABLED");
+    case FR_NO_FILESYSTEM:       return F("FR_NO_FILESYSTEM");
+    case FR_MKFS_ABORTED:        return F("FR_MKFS_ABORTED");
+    case FR_TIMEOUT:             return F("FR_TIMEOUT");
+    case FR_LOCKED:              return F("FR_LOCKED");
+    case FR_NOT_ENOUGH_CORE:     return F("FR_NOT_ENOUGH_CORE");
+    case FR_TOO_MANY_OPEN_FILES: return F("FR_TOO_MANY_OPEN_FILES");
+    case FR_INVALID_PARAMETER:   return F("FR_INVALID_PARAMETER");
+    default:                     return F("FR_???");
+  }
+}
 
 void setup() {
-  bool disp = false;
-  // Open serial communications and wait for port to open:
-  Serial.begin(9600);
+  Serial.begin(115200);
+  delay(1500);
+  Serial.println(F("\n[SD DIAG] Starting…"));
 
-  while (!Serial)
-    ;
-  Serial.print("\nInitializing SD card...");
-  while (!card.init(SD_DETECT_PIN)) {
-    if (!disp) {
-      Serial.println("initialization failed. Is a card inserted?");
-      disp = true;
+  // If your slot has no detect pin, force ignore
+  // SD.begin(SD_DETECT_NONE) only affects STM32SD’s wrapper; we go lower-level here.
+
+  // 1) Link SD disk driver -> sdPath becomes something like "0:"
+  if (!linked) {
+    if (FATFS_LinkDriver(&SD_Driver, sdPath) == 0) {
+      linked = true;
+      Serial.print(F("[SD DIAG] FATFS_LinkDriver OK. sdPath="));
+      Serial.println(sdPath);
+    } else {
+      Serial.println(F("[SD DIAG] FATFS_LinkDriver FAILED"));
+      return;
     }
-    delay(10);
   }
 
-  Serial.println("A card is present.");
+  // 2) Try to mount immediately
+  FRESULT fr = f_mount(&fs, sdPath, 1);  // 1 = mount now
+  Serial.print(F("[SD DIAG] f_mount -> ")); Serial.print((int)fr);
+  Serial.print(F(" (")); Serial.print(frName(fr)); Serial.println(F(")"));
 
-  // print the type of card
-  Serial.print("\nCard type: ");
-  switch (card.type()) {
-    case SD_CARD_TYPE_SD1:
-      Serial.println("SD1");
-      break;
-    case SD_CARD_TYPE_SD2:
-      Serial.println("SD2");
-      break;
-    case SD_CARD_TYPE_SDHC:
-      Serial.println("SDHC");
-      break;
-    default:
-      Serial.println("Unknown");
-  }
-
-  // Now we will try to open the 'volume'/'partition' - it should be FAT16 or FAT32
-  if (!fatFs.init()) {
-    Serial.println("Could not find FAT16/FAT32 partition.\nMake sure you've formatted the card");
+  if (fr != FR_OK) {
+    Serial.println(F("[SD DIAG] Mount failed. Common causes:"));
+    Serial.println(F(" - FR_NO_FILESYSTEM: bad/odd partition; reformat FAT32 with 1 primary partition"));
+    Serial.println(F(" - FR_NOT_READY: card not detected/initialized; try SD_DETECT_NONE or reseat"));
+    Serial.println(F(" - FR_DISK_ERR: electrical/card fault; try another card"));
     return;
   }
 
-  // print the type and size of the first FAT-type volume
-  uint64_t volumesize;
-  Serial.print("\nVolume type is FAT");
-  Serial.println(fatFs.fatType(), DEC);
-  Serial.println();
-
-  volumesize = fatFs.blocksPerCluster();  // clusters are collections of blocks
-  volumesize *= fatFs.clusterCount();     // we'll have a lot of clusters
-  volumesize *= 512;                      // SD card blocks are always 512 bytes
-  Serial.print("Volume size (bytes): ");
-  Serial.println(volumesize);
-  Serial.print("Volume size (Kbytes): ");
-  volumesize /= 1024;
-  Serial.println(volumesize);
-  Serial.print("Volume size (Mbytes): ");
-  volumesize /= 1024;
-  Serial.println(volumesize);
-
-
-  Serial.println("\nFiles found on the card (name, date and size in bytes): ");
-  File root = SD.openRoot();
-
-  // list all files in the card with date and size
-  root.ls(LS_R | LS_DATE | LS_SIZE);
-  root.close();
-  if (!fatFs.deinit()) {
-    Serial.println("Failed to deinit card");
-  }
-  if (!card.deinit()) {
-    Serial.println("Failed to deinit card");
+  // 3) List root to prove it’s mounted
+  DIR dir;
+  FILINFO fno;
+  fr = f_opendir(&dir, sdPath);  // open root
+  if (fr != FR_OK) {
+    Serial.print(F("[SD DIAG] f_opendir failed: "));
+    Serial.print((int)fr); Serial.print(F(" (")); Serial.print(frName(fr)); Serial.println(F(")"));
+  } else {
+    Serial.println(F("[SD DIAG] Root listing:"));
+    for (;;) {
+      fr = f_readdir(&dir, &fno);
+      if (fr != FR_OK || fno.fname[0] == 0) break;
+      Serial.print(fno.fname);
+      if (fno.fattrib & AM_DIR) Serial.println(F("/"));
+      else {
+        Serial.print(F("\t")); Serial.println((uint32_t)fno.fsize);
+      }
+    }
+    f_closedir(&dir);
   }
 
-  Serial.println("###### End of the SD tests ######");
+  // 4) Unmount cleanly
+  fr = f_mount(nullptr, sdPath, 0);
+  Serial.print(F("[SD DIAG] f_unmount -> ")); Serial.print((int)fr);
+  Serial.print(F(" (")); Serial.print(frName(fr)); Serial.println(F(")"));
+
+  Serial.println(F("[SD DIAG] Done."));
 }
 
-void loop(void) {
-  // do nothing
-}
+void loop() {}
