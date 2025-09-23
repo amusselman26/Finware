@@ -28,7 +28,7 @@ void setup() {
   while (!Serial)
     ;
   Serial.print("\nInitializing SD card...");
-  while (!card.init()) {
+  while (!card.init(SD_DETECT_PIN)) {
     if (!disp) {
       Serial.println("initialization failed. Is a card inserted?");
       disp = true;
