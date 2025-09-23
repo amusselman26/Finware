@@ -3,15 +3,15 @@
 #include <Wire.h>
 #include <Adafruit_LPS2X.h>
 
-#include "platform/Clock.hpp"
 #include "sensors/SensorTypes.hpp"
 #include "sensors/SensorsHealth.hpp"
 
 namespace finware {
 
+
 // Sample struct for barometer (POD, trivially copyable)
 struct BARO_Sample {
-    time_us_t t_us;        // timestamp from Clock::now()
+    uint64_t t_us;        // timestamp from micros()
     float pressure_hPa;    // pressure in hectopascals
     float temperature_C;   // temperature in Celsius
     float altitude_m;      // derived altitude (optional, can be NAN)

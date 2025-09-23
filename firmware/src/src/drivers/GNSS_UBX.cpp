@@ -24,7 +24,7 @@ void GNSS_UBX::tick() {
     if (!_healthy) return;
 
     if (_gnss.getPVT()) {
-        _latest.t_us = finware::Clock::now();
+        _latest.t_us = micros();
         _latest.lat = _gnss.getLatitude();
         _latest.lon = _gnss.getLongitude();
         _latest.alt_m = _gnss.getAltitude() / 1000.0f - _zero_alt_m; // mm -> m

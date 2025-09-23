@@ -1,5 +1,4 @@
 #pragma once
-#include "platform/Clock.hpp"
 #include "drivers/Baro_LPS22.hpp"
 #include "drivers/IMU_BNO085.hpp"
 #include "drivers/GNSS_UBX.hpp"
@@ -8,7 +7,7 @@ namespace finware {
 
     // Snapshot of all sensors data
     struct SensorsSnapshot {
-        time_us_t t_us;  // Timestamp of the snapshot in microseconds
+        uint64_t t_us;  // Timestamp of the snapshot in microseconds
         IMU_Sample imu;
         BARO_Sample baro;
         GNSS_Sample gnss;

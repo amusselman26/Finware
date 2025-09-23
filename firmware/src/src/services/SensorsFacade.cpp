@@ -19,7 +19,7 @@ void SensorsFacade::tick() {
     imu_.tick();
     baro_.tick();
     gnss_.tick();
-    last_.t_us = Clock::now();
+    last_.t_us = micros();
 
     if (imu_.ok()) {
         last_.imu = imu_.latest();

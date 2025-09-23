@@ -24,7 +24,7 @@ void Baro_LPS22::tick() {
 
     sensors_event_t pressure, temp;
     if (_lps22.getEvent(&pressure, &temp)) {
-        _latest.t_us = finware::Clock::now();
+        _latest.t_us = micros();
         _latest.pressure_hPa = pressure.pressure;
         _latest.temperature_C = temp.temperature;
         _latest.altitude_m = Baro_LPS22::pressureToAltitude(_latest.pressure_hPa, _sea_level_hPa);
