@@ -11,9 +11,12 @@ bool IMU_BNO085::begin(sh2_SensorId_t report, uint32_t reportIntervalUs) {
 
   // Note: Adafruit_BNO08x::begin_SPI(cs, intPin) ignores reset if given in ctor.
   if (!_bno.begin_SPI(_cs, _int)) {
+    Serial.println("Failed to start SPI");
+    while(1) { delay(10); }
     _healthy = false;
     return false;
   }
+  Serial.println("BNO08x found");
   _healthy = true;
 
   // Select the desired report stream

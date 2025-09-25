@@ -8,9 +8,18 @@ SensorsFacade::SensorsFacade(uint8_t imu_cs, uint8_t imu_int, int8_t imu_rst,
 
 bool SensorsFacade::begin() {
     bool ok = true;
-    ok &= imu_.begin(SH2_ARVR_STABILIZED_RV, 5000); // 200 Hz quaternion
+    // ok &= imu_.begin(SH2_ARVR_STABILIZED_RV, 5000); // 200 Hz quaternion
+    // if (ok) {
+    //     Serial.println("IMU started.");
+    // }
     ok &= baro_.begin(LPS22_RATE_10_HZ);            // 10 Hz baro
+    if (ok) {
+        Serial.println("Barometer started.");
+    }
     ok &= gnss_.begin(40);                            // GNSS at 40 Hz update rate
+    if (ok) {
+        Serial.println("GNSS started.");
+    }
     return ok;
 }
 

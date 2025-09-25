@@ -1,32 +1,44 @@
-#include "drivers/SDCard.hpp"
-#include "drivers/IMU_BNO085.hpp"
+#include <Arduino.h>
+#include "services/SensorsFacade.hpp"   // adjust path as needed
 
 using namespace finware;
 
-SDCard sd;
+// -------------------
+// Configure pins / addrs
+// -------------------
+constexpr uint8_t IMU_CS   = 10;   // example chip select pin for BNO085 (SPI mode)
+constexpr uint8_t IMU_INT  = 9;    // example interrupt pin
+constexpr int8_t  IMU_RST  = 5;    // example reset pin
+constexpr uint8_t BARO_ADDR = 0x5C; // LPS22 I²C address
+constexpr uint8_t GNSS_ADDR = 0x42; // u-blox I²C address
+
+// -------------------
+// Create facade
+// -------------------
+SensorsFacade sensors(IMU_CS, IMU_INT, IMU_RST, BARO_ADDR, GNSS_ADDR);
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial) { ; }
+  while (!Serial) { } // wait for USB if needed
 
-  while (!sd.begin()) {
-    Serial.println("SD mount failed");
-    return;
+  if (!sensors.begin()) {
+    Serial.println("Sensors init failed!");
   }
-  if (!sd.open("/flight.bin")) {
-    Serial.println("open failed");
-    return;
-  }
-  sd.println("LOG START");
+  Serial.println("Sensors initialized.");
 }
 
 void loop() {
-  // Example: write a POD struct directly
-  IMU_Sample s{};
-  s.t_us = micros();
-  s.q[0] = 1; s.q[1] = 0; s.q[2] = 0; s.q[3] = 0;
+  // Tick all sensors — should be called frequently
+  sensors.tick();
 
-  sd.write(&s, sizeof(s));  // blocking write
+  // Periodically dump snapshot
+  static uint32_t t_next_print = 0;
+  if (millis() >= t_next_print) {
+    SensorsSnapshot snap = sensors.snapshot();
 
-  delay(100);
+    Serial.print("time: "); Serial.print(snap.t_us);
+    Serial.print("Pressure: "); Serial.println(snap.baro.pressure_hPa);
+
+    t_next_print = millis() + 200; // every 200 ms
+  }
 }
