@@ -2,8 +2,7 @@
 #include <Arduino.h>
 #include <Adafruit_BNO08x.h>
 
-#include "platform/Clock.hpp"
-
+namespace finware {
 // Minimal POD for "latest sample"
 struct IMU_Sample {
   uint64_t t_us;       // micros() when sample captured
@@ -75,3 +74,4 @@ private:
   volatile uint32_t _seq = 0;
   bool _healthy = false;
 };
+} // namespace finware

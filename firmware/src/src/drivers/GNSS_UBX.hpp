@@ -3,13 +3,13 @@
 #include <Wire.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 
-#include "platform/Clock.hpp"
 #include "sensors/SensorTypes.hpp"
 #include "sensors/SensorsHealth.hpp"
 
-namespace finware {
+namespace finware {  
+
 struct GNSS_Sample {
-    time_us_t t_us;       // timestamp from Clock::now()
+    uint64_t t_us;       // timestamp from Clock::now()
     long lat;            // latitude in degrees * 10^7
     long lon;            // longitude in degrees * 10^7
     float alt_m;          // altitude in meters
@@ -31,7 +31,7 @@ class GNSS_UBX {
     // Read at most one sensor event; update latest sample
     void tick();
 
-    void calibrateAltitude(float zero_alt_m);
+    void calibrateAltitude();
 
     // Diagnostics
     bool ok() const {  return _healthy;  }
@@ -41,6 +41,8 @@ class GNSS_UBX {
 
     // Not yet implemented
     const GPS_Health& health() const {  return _health;  }
+
+    float zeroAltitude() const {  return _zero_alt_m;  }
 
     private:
     // State

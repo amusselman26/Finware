@@ -10,6 +10,7 @@ bool Baro_LPS22::begin(lps22_rate_t data_rate) {
     _data_rate = data_rate;
 
     if (!_lps22.begin_I2C(_i2c_addr)) {
+        Serial.println("Failed to find LPS22 chip");
         _healthy = false;
         return false;
     }
@@ -24,7 +25,7 @@ void Baro_LPS22::tick() {
 
     sensors_event_t pressure, temp;
     if (_lps22.getEvent(&pressure, &temp)) {
-        _latest.t_us = finware::Clock::now();
+        _latest.t_us = micros();
         _latest.pressure_hPa = pressure.pressure;
         _latest.temperature_C = temp.temperature;
         _latest.altitude_m = Baro_LPS22::pressureToAltitude(_latest.pressure_hPa, _sea_level_hPa);

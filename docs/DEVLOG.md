@@ -42,3 +42,6 @@ Next: Add wrappers for LPS22 and GPS modules.
 Goal: Add LPS22 wrapper and test
 Issue: Initial altitude in the -1000s, added if statement in example usage to recalibrate atm_pressure if alt less than -100 m.
 Next: Add wrapper for GPS module
+
+## 2025-09-10
+GPS wrapper completed. Added adafruit documentation to repo. When trying to use STM32duino SD FAT, error in line 57 of SdFatFs.cpp prevented build. Changed this line locally to if (f_mount(NULL, (TCHAR const *)_SDPath, 0) == FR_OK). Pretty sure this will not port.

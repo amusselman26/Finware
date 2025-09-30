@@ -1,87 +1,55 @@
-/*
-  Reading lat and long via UBX binary commands - no more NMEA parsing!
-  By: Nathan Seidle
-  SparkFun Electronics
-  Date: January 3rd, 2019
-  License: MIT. See license file for more information but you can
-  basically do whatever you want with this code.
+#include <Arduino.h>
+#include "services/SensorsFacade.hpp"   // adjust path as needed
 
-  This example shows how to query a u-blox module for its lat/long/altitude. We also
-  turn off the NMEA output on the I2C port. This decreases the amount of I2C traffic 
-  dramatically.
+using namespace finware;
 
-  Note: Long/lat are large numbers because they are * 10^7. To convert lat/long
-  to something google maps understands simply divide the numbers by 10,000,000. We 
-  do this so that we don't have to use floating point numbers.
+// -------------------
+// Configure pins / addrs
+// -------------------
+constexpr uint8_t IMU_CS   = 10;   // example chip select pin for BNO085 (SPI mode)
+constexpr uint8_t IMU_INT  = 9;    // example interrupt pin
+constexpr int8_t  IMU_RST  = 5;    // example reset pin
+constexpr uint8_t BARO_ADDR = 0x5D; // LPS22 I²C address
+constexpr uint8_t GNSS_ADDR = 0x42; // u-blox I²C address
 
-  Leave NMEA parsing behind. Now you can simply ask the module for the datums you want!
+// -------------------
+// Create facade
+// -------------------
+SensorsFacade sensors(IMU_CS, IMU_INT, IMU_RST, BARO_ADDR, GNSS_ADDR);
 
-  Feel like supporting open source hardware?
-  Buy a board from SparkFun!
-  ZED-F9P RTK2: https://www.sparkfun.com/products/15136
-  NEO-M8P RTK: https://www.sparkfun.com/products/15005
-  SAM-M8Q: https://www.sparkfun.com/products/15106
-
-  Hardware Connections:
-  Plug a Qwiic cable into the GNSS and a BlackBoard
-  If you don't have a platform with a Qwiic connection use the SparkFun Qwiic Breadboard Jumper (https://www.sparkfun.com/products/14425)
-  Open the serial monitor at 115200 baud to see the output
-*/
-
-#include <Wire.h> //Needed for I2C to GNSS
-#include <SparkFun_u-blox_GNSS_Arduino_Library.h> //http://librarymanager/All#SparkFun_u-blox_GNSS
-
-SFE_UBLOX_GNSS myGNSS;
-
-long lastTime = 0; //Simple local timer. Limits amount if I2C traffic to u-blox module.
-
-void setup()
-{
+void setup() {
   Serial.begin(115200);
-  while (!Serial); //Wait for user to open terminal
-  Serial.println("SparkFun u-blox Example");
+  while (!Serial) { } // wait for USB if needed
 
-  Wire.begin();
+  delay(5000); // wait for things to stabilize
+  Serial.println("Initializing sensors...");
 
-  //myGNSS.enableDebugging(); // Uncomment this line to enable helpful debug messages on Serial
-
-  if (myGNSS.begin() == false) //Connect to the u-blox module using Wire port
-  {
-    Serial.println(F("u-blox GNSS not detected at default I2C address. Please check wiring. Freezing."));
-    while (1);
+  if (!sensors.begin()) {
+    Serial.println("Sensors init failed!");
+    delay(2000); // wait 2 sec and try again
   }
-
-  myGNSS.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
-  myGNSS.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT); //Save (only) the communications port settings to flash and BBR
-  myGNSS.setNavigationFrequency(20);
+  Serial.println("Sensors initialized.");
 }
 
-void loop()
-{
-  //Query module only every second. Doing it more often will just cause I2C traffic.
-  //The module only responds when a new position is available
-  if (millis() - lastTime > 50);
-  {
-    lastTime = millis(); //Update the timer
-    
-    long latitude = myGNSS.getLatitude();
-    Serial.print(F("Lat: "));
-    Serial.print(latitude);
+void loop() {
+  // Tick all sensors — should be called frequently
+  SensorsSnapshot snap = sensors.snapshot();
+  
+  sensors.tick();
+  if (snap.baro.altitude_m < -50 || snap.baro.altitude_m > 15) {
+      sensors.baro_.calibrateAtm();
+  }
 
-    long longitude = myGNSS.getLongitude();
-    Serial.print(F(" Long: "));
-    Serial.print(longitude);
-    Serial.print(F(" (degrees * 10^-7)"));
+  // Periodically dump snapshot
+  static uint32_t t_next_print = 0;
+  if (millis() >= t_next_print) {
 
-    long altitude = myGNSS.getAltitude();
-    Serial.print(F(" Alt: "));
-    Serial.print(altitude);
-    Serial.print(F(" (mm)"));
+    Serial.print("time: "); Serial.print(snap.t_us);
+    Serial.print(" | IMU seq: "); Serial.print(snap.imu.q[1]);
+    Serial.print("Pressure: "); Serial.println(snap.baro.pressure_hPa);
+    Serial.print(" | Baro alt: "); Serial.print(snap.baro.altitude_m, 2);
+    Serial.print(" | GNSS lat: "); Serial.print(snap.gnss.lat, 6);
 
-    byte SIV = myGNSS.getSIV();
-    Serial.print(F(" SIV: "));
-    Serial.print(SIV);
-
-    Serial.println();
+    t_next_print = millis() + 200; // every 200 ms
   }
 }
