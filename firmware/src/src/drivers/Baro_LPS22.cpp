@@ -10,6 +10,7 @@ bool Baro_LPS22::begin(lps22_rate_t data_rate) {
     _data_rate = data_rate;
 
     if (!_lps22.begin_I2C(_i2c_addr)) {
+        Serial.println("Failed to find LPS22 chip");
         _healthy = false;
         return false;
     }

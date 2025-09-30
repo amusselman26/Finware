@@ -1,7 +1,10 @@
 // Finware.ino  — minimal example using IMU_BNO085 driver
 // This must be copied into main.cpp of src before runtime. Storing example here prevents multiple definitions of setup and loop.
 #include <Arduino.h>
-#include "IMU_BNO085.hpp"
+#include "drivers/IMU_BNO085.hpp"
+
+
+using namespace finware;
 
 // Pinout from your demo
 const uint8_t BNO_CS  = 10;

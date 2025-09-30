@@ -29,10 +29,10 @@ class SensorsFacade {
     const finware::IMU_Sample& imu()  const { return last_.imu; }
     const finware::BARO_Sample& baro() const { return last_.baro; }
     const finware::GNSS_Sample& gnss()   const { return last_.gnss; }
+    finware::Baro_LPS22 baro_;
 
     private:
     finware::IMU_BNO085 imu_;
-    finware::Baro_LPS22 baro_;
     finware::GNSS_UBX gnss_;
 
     finware::SensorsSnapshot last_{};

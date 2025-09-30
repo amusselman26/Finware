@@ -16,7 +16,6 @@ bool IMU_BNO085::begin(sh2_SensorId_t report, uint32_t reportIntervalUs) {
     _healthy = false;
     return false;
   }
-  Serial.println("BNO08x found");
   _healthy = true;
 
   // Select the desired report stream
