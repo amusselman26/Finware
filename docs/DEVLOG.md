@@ -48,3 +48,17 @@ GPS wrapper completed. Added adafruit documentation to repo. When trying to use 
 
 ## 2025-09-30
 Finalized wrappers for GPS, Baro, and IMU. Succesfully tested all three together. Working on RFM95 radio module and SD card. STM32 Feather SDIO is not working with stm32duino SD library. Seems related to pin configuration. Issue found here: https://github.com/adafruit/Adafruit-Feather-STM32F405-Express-PCB/issues/1. Will use SD breakout in the meantime.
+
+## 2025-10-03
+SD bench results on SPI:
+write speed and latency
+speed,max,min,avg
+KB/Sec,usec,usec,usec
+1118.57,1679,450,457
+1119.32,11174,450,456
+
+read speed and latency
+speed,max,min,avg
+KB/Sec,usec,usec,usec
+1089.09,470,468,469
+1089.80,470,468,469
