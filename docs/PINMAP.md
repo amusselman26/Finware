@@ -15,3 +15,14 @@
 | MISO (D12)    | SPI MISO | LoRa RFM95W      | MISO       | Shared SPI bus |
 | MOSI (D11)    | SPI MOSI | LoRa RFM95W      | MOSI       | Shared SPI bus |
 | SCK (D13)     | SPI CLK  | LoRa RFM95W      | SCK        | Shared SPI bus |
+
+## Digital Pins
+5 - BNO085 RST
+9 - BNO085 INT
+11 - BNO085 CS
+
+10 - SD CS
+
+13 - LoRa INT
+12 - LoRa CS
+6 - LoRa G0
