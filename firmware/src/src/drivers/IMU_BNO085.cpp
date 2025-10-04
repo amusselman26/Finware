@@ -1,5 +1,4 @@
 #include "IMU_BNO085.hpp"
-
 using namespace finware;
 
 IMU_BNO085::IMU_BNO085(uint8_t csPin, uint8_t intPin, int8_t resetPin)
@@ -9,30 +8,31 @@ bool IMU_BNO085::begin(sh2_SensorId_t report, uint32_t reportIntervalUs) {
   _reportType = report;
   _reportIntervalUs = reportIntervalUs;
 
-  // Note: Adafruit_BNO08x::begin_SPI(cs, intPin) ignores reset if given in ctor.
   if (!_bno.begin_SPI(_cs, _int)) {
-    Serial.println("Failed to start SPI");
-    while(1) { delay(10); }
+    Serial.println("BNO085 SPI begin failed");
     _healthy = false;
     return false;
   }
   _healthy = true;
-
-  // Select the desired report stream
-  return enableReport_();
+  return enableReports_();
 }
 
 bool IMU_BNO085::setReport(sh2_SensorId_t report, uint32_t reportIntervalUs) {
   _reportType = report;
   _reportIntervalUs = reportIntervalUs;
   if (!_healthy) return false;
-  return enableReport_();
+  return enableReports_();
 }
 
-bool IMU_BNO085::enableReport_() {
-  // Request rotation-vector style report at the configured period
-  // SH2_ARVR_STABILIZED_RV ~ accurate @ ~250 Hz max; SH2_GYRO_INTEGRATED_RV ~ up to ~1 kHz
-  bool ok = _bno.enableReport(_reportType, (long)_reportIntervalUs);
+bool IMU_BNO085::enableReports_() {
+  bool ok = true;
+  // 1) Rotation vector (your selected flavor)
+  ok &= _bno.enableReport(_reportType, (long)_reportIntervalUs);
+  // 2) Raw accelerometer (m/s^2)
+  ok &= _bno.enableReport(SH2_LINEAR_ACCELERATION, (long)_reportIntervalUs);
+  // 3) Raw gyroscope (rad/s)
+  ok &= _bno.enableReport(SH2_RAW_GYROSCOPE, (long)_reportIntervalUs);
+
   _healthy = _healthy && ok;
   return ok;
 }
@@ -40,51 +40,84 @@ bool IMU_BNO085::enableReport_() {
 void IMU_BNO085::tick() {
   if (!_healthy) return;
 
-  // If the chip reports a reset, re-enable our report
   if (_bno.wasReset()) {
-    // keep running but refresh reports
-    enableReport_();
+    enableReports_(); // re-enable streams after reset
   }
 
-  // Pull at most one event; if it matches our report, cache latest quaternion
   if (_bno.getSensorEvent(&_sv)) {
+    const uint32_t now_us = micros();
+
     switch (_sv.sensorId) {
+      // --- Rotation vectors (quaternion) ---
       case SH2_ARVR_STABILIZED_RV: {
-        if (_reportType != SH2_ARVR_STABILIZED_RV) break;
-        const auto &rv = _sv.un.arvrStabilizedRV;
-        _latest.t_us = micros();
-        _latest.q[0] = rv.real; _latest.q[1] = rv.i; _latest.q[2] = rv.j; _latest.q[3] = rv.k;
-        _latest.calib = _sv.status;           // 0..3
-        _latest.seq = ++_seq;
+        if (_reportType == SH2_ARVR_STABILIZED_RV) {
+          const auto &rv = _sv.un.arvrStabilizedRV;
+          _latest.q[0] = rv.real;
+          _latest.q[1] = rv.i;
+          _latest.q[2] = rv.j;
+          _latest.q[3] = rv.k;
+          _latest.calib = _sv.status;
+          _latest.t_us  = now_us;
+          _latest.seq   = ++_seq;
+        }
         break;
       }
       case SH2_GYRO_INTEGRATED_RV: {
-        if (_reportType != SH2_GYRO_INTEGRATED_RV) break;
-        const auto &rv = _sv.un.gyroIntegratedRV;
-        _latest.t_us = micros();
-        _latest.q[0] = rv.real; _latest.q[1] = rv.i; _latest.q[2] = rv.j; _latest.q[3] = rv.k;
-        _latest.calib = _sv.status;
-        _latest.seq = ++_seq;
+        if (_reportType == SH2_GYRO_INTEGRATED_RV) {
+          const auto &rv = _sv.un.gyroIntegratedRV;
+          _latest.q[0] = rv.real;
+          _latest.q[1] = rv.i;
+          _latest.q[2] = rv.j;
+          _latest.q[3] = rv.k;
+          _latest.calib = _sv.status;
+          _latest.t_us  = now_us;
+          _latest.seq   = ++_seq;
+        }
         break;
       }
+
+      // --- Accelerometer (m/s^2) ---
+      case SH2_LINEAR_ACCELERATION: {
+        const auto &a = _sv.un.accelerometer; // m/s^2
+        _latest.ax = a.x;
+        _latest.ay = a.y;
+        _latest.az = a.z;
+        _latest.calib = _sv.status;
+        _latest.t_us  = now_us;
+        _latest.seq   = ++_seq;
+        break;
+      }
+
+      // --- Gyroscope (rad/s) ---
+      case SH2_RAW_GYROSCOPE: {
+        const auto &g = _sv.un.gyroscope; // rad/s
+        _latest.gx = g.x;
+        _latest.gy = g.y;
+        _latest.gz = g.z;
+        _latest.calib = _sv.status;
+        _latest.t_us  = now_us;
+        _latest.seq   = ++_seq;
+        break;
+      }
+
       default:
-        // Other reports ignored in this wrapper
+        // ignore other reports
         break;
     }
   }
 }
 
+
 bool IMU_BNO085::wasReset() {
   if (!_healthy) return false;
   if (_bno.wasReset()) {
-    enableReport_();
+    enableReports_();
     return true;
   }
   return false;
 }
 
 uint32_t IMU_BNO085::sequence() const { return _seq; }
-
 uint8_t IMU_BNO085::calibration() const { return _latest.calib; }
 
 IMU_EulerDeg IMU_BNO085::latestEulerDegrees() const {
@@ -93,18 +126,11 @@ IMU_EulerDeg IMU_BNO085::latestEulerDegrees() const {
   return out;
 }
 
-// Quaternion -> Euler (degrees), same math as your demo
+// Quaternion -> Euler (degrees)
 void IMU_BNO085::quatToEuler(float qr, float qi, float qj, float qk, IMU_EulerDeg& outDeg) {
-  const float sqr = qr*qr;
-  const float sqi = qi*qi;
-  const float sqj = qj*qj;
-  const float sqk = qk*qk;
-
-  float yaw   = atan2f(2.0f * (qi*qj + qk*qr), (sqi - sqj - sqk + sqr));
-  float pitch = asinf (-2.0f * (qi*qk - qj*qr) / (sqi + sqj + sqk + sqr));
-  float roll  = atan2f(2.0f * (qj*qk + qi*qr), (-sqi - sqj + sqk + sqr));
-
-  outDeg.yaw   = yaw   * RAD_TO_DEG;
-  outDeg.pitch = pitch * RAD_TO_DEG;
-  outDeg.roll  = roll  * RAD_TO_DEG;
+  const float sqr = qr*qr, sqi = qi*qi, sqj = qj*qj, sqk = qk*qk;
+  const float yaw   = atan2f(2.f * (qi*qj + qk*qr), (sqi - sqj - sqk + sqr));
+  const float pitch = asinf (-2.f * (qi*qk - qj*qr) / (sqi + sqj + sqk + sqr));
+  const float roll  = atan2f(2.f * (qj*qk + qi*qr), (-sqi - sqj + sqk + sqr));
+  outDeg.yaw = yaw * RAD_TO_DEG; outDeg.pitch = pitch * RAD_TO_DEG; outDeg.roll = roll * RAD_TO_DEG;
 }
