@@ -22,7 +22,7 @@ class IMU_BNO085 {
 public:
   // Preferred: SPI bring-up (matches your demo)
   // csPin: chip select, intPin: data-ready/interrupt, resetPin: sensor reset
-  IMU_BNO085(uint8_t csPin, uint8_t intPin, int8_t resetPin = -1);
+  IMU_BNO085(uint8_t csPin, uint8_t intPin, int8_t resetPin = 5);
 
   // Begin and select the rotation-vector report & rate (µs interval)
   // report = SH2_ARVR_STABILIZED_RV (accurate) or SH2_GYRO_INTEGRATED_RV (fast)

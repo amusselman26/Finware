@@ -1,76 +1,50 @@
-// Finware.ino  — minimal example using IMU_BNO085 driver
-// This must be copied into main.cpp of src before runtime. Storing example here prevents multiple definitions of setup and loop.
 #include <Arduino.h>
-#include "drivers/IMU_BNO085.hpp"
-
+#include "services/SensorsFacade.hpp"   // adjust path as needed
 
 using namespace finware;
 
-// Pinout from your demo
-const uint8_t BNO_CS  = 10;
-const uint8_t BNO_INT = 9;
-const int8_t  BNO_RST = 5;
+// -------------------
+// Configure pins / addrs
+// -------------------
+constexpr uint8_t IMU_CS   = 11;   // example chip select pin for BNO085 (SPI mode)
+constexpr uint8_t IMU_INT  = 9;    // example interrupt pin
+constexpr int8_t  IMU_RST  = 5;    // example reset pin
+constexpr uint8_t BARO_ADDR = 0x5C; // LPS22 I²C address
+constexpr uint8_t GNSS_ADDR = 0x42; // u-blox I²C address
 
-// Driver instance
-IMU_BNO085 imu(BNO_CS, BNO_INT, BNO_RST);
-
-// Print rate control
-static uint32_t nextPrint_us = 0;
-static const uint32_t PRINT_PERIOD_US = 20000; // 50 Hz prints
+// -------------------
+// Create facade
+// -------------------
+SensorsFacade sensors(IMU_CS, IMU_INT, IMU_RST, BARO_ADDR, GNSS_ADDR);
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial) { /* wait for USB CDC */ }
+  while (!Serial) { } // wait for USB if needed
 
-  Serial.println("\n[BNO085] bring-up...");
+  delay(5000); // wait for things to stabilize
+  Serial.println("Initializing sensors...");
 
-  // Start with the more accurate rotation vector at ~200 Hz (5000 us interval)
-  if (!imu.begin(SH2_ARVR_STABILIZED_RV, 5000)) {
-    Serial.println("ERROR: BNO085 init failed");
-    // You could continue without IMU, but we'll stop here for the demo:
-    while (true) { delay(1000); }
+  if (!sensors.begin()) {
+    Serial.println("Sensors init failed!");
+    delay(2000); // wait 2 sec and try again
   }
-  Serial.println("BNO085 ready.");
+  Serial.println("Sensors initialized.");
 }
 
 void loop() {
-  // Non-blocking poll; at most one event per call is processed
-  imu.tick();
+  // Tick all sensors — should be called frequently
+  sensors.tick();
 
-  // Optional: detect and report sensor resets
-  if (imu.wasReset()) {
-    Serial.println("[BNO085] sensor reset detected; report re-enabled.");
+  // Periodically dump snapshot
+  static uint32_t t_next_print = 0;
+  if (millis() >= t_next_print) {
+    SensorsSnapshot snap = sensors.snapshot();
+
+    Serial.print("time: "); Serial.print(snap.t_us);
+    Serial.print(" | IMU seq: "); Serial.print(snap.imu.q[1]);
+    Serial.print("Pressure: "); Serial.println(snap.baro.pressure_hPa);
+    Serial.print(" | GNSS lat: "); Serial.print(snap.gnss.lat, 6);
+
+    t_next_print = millis() + 200; // every 200 ms
   }
-
-  // Print Euler angles at 50 Hz
-  uint32_t now = micros();
-  if ((int32_t)(now - nextPrint_us) >= 0) {
-    nextPrint_us += PRINT_PERIOD_US;
-
-    // Read latest quaternion-derived Euler (deg)
-    IMU_EulerDeg e = imu.latestEulerDegrees();
-
-    // Diagnostics
-    uint32_t seq = imu.sequence();
-    // uint8_t cal = imu.calibration();
-
-    Serial.print("seq=");
-    Serial.print(seq);
-    // Serial.print(" cal=");
-    // Serial.print(cal);
-    Serial.print(" | yaw=");
-    Serial.print(e.yaw, 2);
-    Serial.print(" pitch=");
-    Serial.print(e.pitch, 2);
-    Serial.print(" roll=");
-    Serial.println(e.roll, 2);
-  }
-
-  // (Optional) Example of switching to the faster report at runtime:
-  // static bool switched = false;
-  // if (!switched && millis() > 5000) {
-  //   imu.setReport(SH2_GYRO_INTEGRATED_RV, 2000); // ~500 Hz target (variable)
-  //   Serial.println("[BNO085] switched to GYRO_INTEGRATED_RV @ 2000 us");
-  //   switched = true;
-  // }
 }
