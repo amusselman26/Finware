@@ -34,12 +34,7 @@ void Baro_LPS22::tick() {
 }
 
 void Baro_LPS22::calibrateAtm() {
-    Baro_LPS22::tick();
-
-    // Use latest pressures as sea-level reference
-    if (_latest.pressure_hPa > 0) {
-        _sea_level_hPa = _latest.pressure_hPa;
-    }
+    _sea_level_hPa = _latest.pressure_hPa;
 }
 
 float Baro_LPS22::pressureToAltitude(float pressure_hPa, float seaLevel_hPa) {

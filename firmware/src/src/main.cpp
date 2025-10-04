@@ -1,86 +1,101 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include "services/SensorsFacade.hpp"   // adjust path as needed
-#include "drivers/SDLogger.h"           // provides sdBegin, openNextLog, writeSnapshot, flushLog, closeLog
+
+#include "services/SensorsFacade.hpp"  // your facade
+#include "drivers/SDLogger.h"          // sdBegin, openNextLog, writeSnapshot, flushLog, closeLog
+#include "drivers/LoRaRadio.h"         // wrapper around RH_RF95 from earlier
 
 using namespace finware;
 
-// -------------------
-// Configure pins / addrs  (adjust to your wiring/board!)
-// -------------------
-constexpr uint8_t IMU_CS    = 11;   // BNO085 CS (SPI)  — make sure this pin isn’t used by SD CS
-constexpr uint8_t IMU_INT   = 9;    // BNO085 INT
-constexpr int8_t  IMU_RST   = 5;    // BNO085 RST
-constexpr uint8_t BARO_ADDR = 0x5D; // LPS22HB/HD I2C
-constexpr uint8_t GNSS_ADDR = 0x42; // u-blox I2C
+// ------------------- Pins / Addresses (adjust as needed) -------------------
+constexpr uint8_t IMU_CS     = 11;     // BNO085 CS (SPI) — must not conflict with SD CS
+constexpr uint8_t IMU_INT    = 9;      // BNO085 INT
+constexpr int8_t  IMU_RST    = 5;      // BNO085 RST
+constexpr uint8_t BARO_ADDR  = 0x5D;   // LPS22 I2C
+constexpr uint8_t GNSS_ADDR  = 0x42;   // u-blox I2C
 
+// LoRa (RFM95) — avoid conflict with SD CS=10 by NOT using 10 for RST/CS
+constexpr uint8_t LORA_CS    = 12;
+constexpr uint8_t LORA_INT   = 6;
+constexpr uint8_t LORA_RST   = 13;      // moved to D6 to avoid SD CS=10 clash
+constexpr float   LORA_FREQ  = 915.0f; // MHz
+
+// ------------------- Globals -------------------
 char logFilename[20];
-
-// -------------------
-// Create facade
-// -------------------
 SensorsFacade sensors(IMU_CS, IMU_INT, IMU_RST, BARO_ADDR, GNSS_ADDR);
+LoRaRadio     LoRa(LORA_CS, LORA_INT, LORA_RST, LORA_FREQ);
+
+// Minimal binary packet (little-endian)
+struct __attribute__((packed)) TelemetryLLA {
+  int32_t lat_e7;   // degrees * 1e7
+  int32_t lon_e7;   // degrees * 1e7
+  float   alt_m;    // meters
+  uint32_t t_ms;    // sender timestamp
+};
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial) {} // wait for USB if needed
+  while (!Serial) {}   // ok to keep setup prints for bring-up
 
   Wire.begin();
-  // If your IMU uses SPI in your facade, that code should call SPI.begin() internally.
-  // If not, uncomment next line:
-  // SPI.begin();
 
-  delay(500); // short settle
-  Serial.println("Initializing sensors...");
-
+  // --- Sensors ---
   if (!sensors.begin()) {
     Serial.println("Sensors init failed!");
-    delay(2000);
-    // you might want to retry or safe-halt here
+    while (true) delay(1000);
   }
   Serial.println("Sensors initialized.");
 
+  // --- SD ---
   if (!sdBegin()) {
     Serial.println("SD init failed!");
-    while (true) { delay(1000); } // halt
+    while (true) delay(1000);
   }
   if (!openNextLog(logFilename)) {
     Serial.println("Failed to open next log file!");
-    while (true) { delay(1000); }
+    while (true) delay(1000);
   }
   Serial.print("Logging to "); Serial.println(logFilename);
+
+  // --- LoRa ---
+  if (!LoRa.begin(/*txPower=*/23)) {
+    Serial.println("LoRa init failed!");
+    while (true) delay(1000);
+  }
+  Serial.println("LoRa ready.");
 }
 
 void loop() {
-  // Tick/update all sensors; ensure this is non-blocking inside your facade
+  // Update sensors
   sensors.tick();
 
-  // Write one binary snapshot each loop
+  // Log a full snapshot to SD (binary)
   const SensorsSnapshot snap_now = sensors.snapshot();
-  if (!writeRecord(snap_now)) {
-    // optional: increment an error counter, light LED, etc.
-    Serial.println("SD write failed!");
-  }
+  (void)writeRecord(snap_now); 
 
-  // Periodic flush to keep FAT consistent without killing performance
-  static uint32_t lastFlush = 0;
-  if (millis() - lastFlush >= 1000) { // flush every 1 s
+  if (snap_now.baro.altitude_m < -5) {
+    sensors.baro_.calibrateAtm();
+    sensors.baro_.tick();
+  }
+  // Periodic SD flush (1 s)
+  static uint32_t lastFlushMs = 0;
+  const uint32_t nowMs = millis();
+  if (nowMs - lastFlushMs >= 1000u) {
     flushLog();
-    lastFlush = millis();
+    lastFlushMs = nowMs;
   }
 
-  // Periodically print a human-readable line for debugging
-  static uint32_t t_next_print = 0;
-  if (millis() >= t_next_print) {
-    const SensorsSnapshot snap = sensors.snapshot(); // snapshot again if values change rapidly
+  // Send lat, lon, alt over LoRa every 1 s
+  static uint32_t lastTxMs = 0;
+  if (nowMs - lastTxMs >= 1000u) {
+    TelemetryLLA pkt;
+    pkt.lat_e7 = static_cast<int32_t>(snap_now.gnss.lat);  // already in deg * 1e7 per your struct
+    pkt.lon_e7 = static_cast<int32_t>(snap_now.gnss.lon);
+    pkt.alt_m  = snap_now.gnss.alt_m;
+    pkt.t_ms   = nowMs;
 
-    Serial.print("t_us: ");        Serial.print(snap.t_us);
-    Serial.print(" | q1: ");       Serial.print(snap.imu.q[1]);
-    Serial.print(" | P[hPa]: ");   Serial.print(snap.baro.pressure_hPa);
-    Serial.print(" | lat: ");      Serial.println(snap.gnss.lat, 6);
-
-    t_next_print = millis() + 200; // every 200 ms
+    LoRa.sendMessage(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    lastTxMs = nowMs;
   }
-
-  // … your loop timing policy here (delay or fixed-rate scheduler)
+  // delay(1);
 }
