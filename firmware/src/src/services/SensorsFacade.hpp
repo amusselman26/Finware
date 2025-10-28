@@ -2,12 +2,14 @@
 #include "drivers/Baro_LPS22.hpp"
 #include "drivers/IMU_BNO085.hpp"
 #include "drivers/GNSS_UBX.hpp"
+#include "protocol/SystemStates.h"
 
 namespace finware {
 
     // Snapshot of all sensors data
     struct SensorsSnapshot {
         uint64_t t_us;  // Timestamp of the snapshot in microseconds
+        SystemState state;
         IMU_Sample imu;
         BARO_Sample baro;
         GNSS_Sample gnss;
@@ -23,6 +25,9 @@ class SensorsFacade {
     void tick();
         // Return a copy of the latest snapshot
     
+    // Update FSM state
+    void setState(SystemState s) { last_.state = s; }
+
     finware::SensorsSnapshot snapshot() const { return last_; }
 
     // Direct (read-only) access to last-good samples

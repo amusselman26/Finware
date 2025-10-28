@@ -5,8 +5,12 @@
 
 constexpr uint8_t SD_CS_PIN = 10; // Chip select pin
 constexpr int MAX_LOGS = 9999; // Maximum number of log files
+constexpr uint32_t FLUSH_INTERVAL_MS = 1000;
+
 SdFat sd;
-File32 logFile;
+
+File32 binFile;
+File32 txtFile;
 
 using namespace finware;
 
@@ -20,34 +24,67 @@ bool sdBegin() {
     return true;
 }
 
-bool openNextLog(char *filenameOut) {
+bool openNextLog(char *binOut, char *txtOut) {
     for (int i = 1; i <= MAX_LOGS; i++) {
-        sprintf(filenameOut, "LOG%04d.BIN", i);
-        if (!sd.exists(filenameOut)) {
-            if (logFile.open(filenameOut, O_WRITE | O_CREAT)) {
-                Serial.print("Opened file: ");
-                Serial.println(filenameOut);
+        sprintf(binOut, "LOG%04d.BIN", i);
+        sprintf(txtOut, "LOG%04d.TXT", i);
+        if (!sd.exists(binOut) && !sd.exists(txtOut)) {
+            if (binFile.open(binOut, O_WRITE | O_CREAT) &&
+                txtFile.open(txtOut, O_WRITE | O_CREAT)) {
+
+                Serial.print("[INFO] Opened logs: ");
+                Serial.print(binOut);
+                Serial.print(" + ");
+                Serial.println(txtOut);
+
+                // Write header to text log
+                txtFile.println("=== H.U.G.S. Flight Log Start ===");
+                txtFile.println("Firmware: Finware v1.3.2");
+                txtFile.println("Vehicle: HUGS-01");
+                txtFile.println("---------------------------------");
+                txtFile.flush();
+
                 return true;
             } else {
-                Serial.print("Error opening file: ");
-                Serial.println(filenameOut);
+                Serial.println("[ERROR] Failed to open log files.");
                 return false;
             }
         }
     }
-    Serial.println("Max log files reached.");
+    Serial.println("[ERROR] Max log files reached.");
     return false;
 }
 
 bool writeRecord(const SensorsSnapshot &snap) {
-    int written = logFile.write(&snap, sizeof(snap));
+    if (!binFile) return false;
+    int written = binFile.write(&snap, sizeof(snap));
+    static uint32_t lastFlush = 0;
+    if (millis() - lastFlush > FLUSH_INTERVAL_MS) {
+        binFile.flush();
+        lastFlush = millis();
+    }
     return written == sizeof(snap);
 }
 
+void writeText(const char* tag, const String& msg) {
+    if (!txtFile) return;
+    uint32_t t_ms = millis();
+    txtFile.printf("[%8lu ms] [%s] %s\n", t_ms, tag, msg.c_str());
+    Serial.printf("[%8lu ms] [%s] %s\n", t_ms, tag, msg.c_str());
+}
+
+
 void flushLog() {
-    logFile.flush();
+    if (binFile) binFile.flush();
+    if (txtFile) txtFile.flush();
 }
 
 void closeLog() {
-    logFile.close();
+    if (txtFile) {
+        txtFile.println("=== Flight Complete ===");
+        txtFile.flush();
+        txtFile.close();
+    }
+
+    if (binFile) binFile.close();
 }

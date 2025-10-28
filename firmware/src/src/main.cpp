@@ -17,11 +17,13 @@ constexpr uint8_t GNSS_ADDR  = 0x42;   // u-blox I2C
 // LoRa (RFM95) — avoid conflict with SD CS=10 by NOT using 10 for RST/CS
 constexpr uint8_t LORA_CS    = 12;
 constexpr uint8_t LORA_INT   = 6;
-constexpr uint8_t LORA_RST   = 13;      // moved to D6 to avoid SD CS=10 clash
+constexpr uint8_t LORA_RST   = 13;
 constexpr float   LORA_FREQ  = 915.0f; // MHz
 
 // ------------------- Globals -------------------
-char logFilename[20];
+char txtFilename[20];
+char binFilename[20];
+
 SensorsFacade sensors(IMU_CS, IMU_INT, IMU_RST, BARO_ADDR, GNSS_ADDR);
 LoRaRadio     LoRa(LORA_CS, LORA_INT, LORA_RST, LORA_FREQ);
 
@@ -51,12 +53,12 @@ void setup() {
     Serial.println("SD init failed!");
     while (true) delay(1000);
   }
-  if (!openNextLog(logFilename)) {
+  if (!openNextLog(txtFilename, binFilename)) {
     Serial.println("Failed to open next log file!");
     while (true) delay(1000);
   }
-  Serial.print("Logging to "); Serial.println(logFilename);
-
+  Serial.print("Logging to "); Serial.println(txtFilename);
+  Serial.print(" and "); Serial.println(binFilename);
   // --- LoRa ---
   if (!LoRa.begin(/*txPower=*/23)) {
     Serial.println("LoRa init failed!");
