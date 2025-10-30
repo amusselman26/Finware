@@ -1,5 +1,4 @@
 #include "StateMachine.h"
-#include "drivers/SDLogger.h"
 #include "drivers/logger.h" // Provides finware::Logger wrapper
 #include "services/SensorsFacade.hpp"
 
