@@ -5,8 +5,10 @@
 class StateMachine {
 public:
     void init();
-    void update(const SensorsFacade& sensors);
-    void transitionTo(SystemState newState);
+    // Accept a non-const reference so the state machine can update the SensorsFacade
+    void update(SensorsFacade& sensors);
+    // Allow passing the SensorsFacade to transitionTo so it can push the new state into the snapshot
+    void transitionTo(SystemState newState, SensorsFacade* sensors = nullptr);
     SystemState getState() const { return currentState; }
     String stateName(SystemState s) const;
 
@@ -15,11 +17,11 @@ public:
 private:
     SystemState currentState = SystemState::BOOT;
     bool initialized = false;
-    bool armedCommanded = false;
+    bool armedCommanded = true;
     uint32_t lastTransitionTime = 0;
 
     // Thresholds (tune per vehicle)
-    const float liftoffAltitudeThreshold = 5.0f;   // meters
-    const float launchAccelThreshold = 2.0f;       // g
+    const float liftoffAltitudeThreshold = -5.0f;   // meters
+    const float launchAccelThreshold = 5.0f;       // g
     const float burnoutAccelThreshold = 0.3f;      // g
 };

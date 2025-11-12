@@ -4,6 +4,7 @@
 #include "services/SensorsFacade.hpp"  // your facade
 #include "drivers/SDLogger.h"          // sdBegin, openNextLog, writeSnapshot, flushLog, closeLog
 #include "drivers/LoRaRadio.h"         // wrapper around RH_RF95 from earlier
+#include "app/StateMachine.h"         // FSM
 
 using namespace finware;
 
@@ -26,6 +27,7 @@ char binFilename[20];
 
 SensorsFacade sensors(IMU_CS, IMU_INT, IMU_RST, BARO_ADDR, GNSS_ADDR);
 LoRaRadio     LoRa(LORA_CS, LORA_INT, LORA_RST, LORA_FREQ);
+StateMachine fsm;
 
 // Minimal binary packet (little-endian)
 struct __attribute__((packed)) TelemetryLLA {
@@ -70,6 +72,8 @@ void setup() {
 void loop() {
   // Update sensors
   sensors.tick();
+  fsm.update(sensors);
+
 
   // Log a full snapshot to SD (binary)
   const SensorsSnapshot snap_now = sensors.snapshot();

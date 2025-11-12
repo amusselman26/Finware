@@ -34,6 +34,9 @@ RECORD_FMT = (
     "<"
     # snapshot
     "Q"
+    # SystemState (assumed uint32_t) + 4 bytes pad to match C 8-byte alignment
+    "I"      # state
+    "4x"     # pad to align next uint64_t (IMU.t_us) on 8-byte boundary
     # IMU
     "Q"      # imu.t_us
     "4f"     # imu.q[4]
@@ -62,11 +65,13 @@ RECORD_FMT = (
     "4x"
 )
 
-RECORD_SIZE = struct.calcsize(RECORD_FMT)  # should be 128
+RECORD_SIZE = struct.calcsize(RECORD_FMT)  # should be 136 with added SystemState
 
 FIELDS = [
     # snapshot
     "t_us",
+    # system state
+    "state",
     # imu
     "imu_t_us",
     "imu_q0","imu_q1","imu_q2","imu_q3",

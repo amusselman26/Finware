@@ -2,7 +2,6 @@
 #include "drivers/logger.h" // Provides finware::Logger wrapper
 #include "services/SensorsFacade.hpp"
 
-
 using namespace finware;
 // -----------------------------------------------------------
 // Initialize the FSM
@@ -16,7 +15,10 @@ void StateMachine::init() {
 // -----------------------------------------------------------
 // Update function: called every loop
 // -----------------------------------------------------------
-void StateMachine::update(const SensorsFacade& sensors) {
+void StateMachine::update(SensorsFacade& sensors) {
+    // Ensure the SensorsFacade snapshot reflects the FSM state for this tick
+    sensors.setState(currentState);
+
     // Handle sensor-based conditions for transitions
     const auto& imu  = sensors.imu();
     const auto& baro = sensors.baro();
@@ -42,7 +44,7 @@ void StateMachine::update(const SensorsFacade& sensors) {
 
         case SystemState::ARMED:
             // Detect launch: barometer altitude increase or IMU acceleration
-            if (baro.altitude_m > liftoffAltitudeThreshold ||
+            if (baro.altitude_m > liftoffAltitudeThreshold &&
                 imu.az > launchAccelThreshold) {
                 transitionTo(SystemState::LAUNCH);
             }
@@ -57,7 +59,7 @@ void StateMachine::update(const SensorsFacade& sensors) {
 
         case SystemState::ASCENT:
             // Detect apogee: vertical velocity crosses zero
-            if (baro.altitude_m < 1500) {  // fix this
+            if (baro.altitude_m > 1500) {  // fix this
                 transitionTo(SystemState::APOGEE);
             }
             break;
@@ -65,7 +67,7 @@ void StateMachine::update(const SensorsFacade& sensors) {
         case SystemState::APOGEE:
             // Trigger drogue deployment here
             Logger::logText("DEPLOY", "Drogue chute fired");
-            transitionTo(SystemState::DESCENT);
+            transitionTo(SystemState::DESCENT, &sensors);
             break;
 
         case SystemState::DESCENT:
@@ -77,7 +79,7 @@ void StateMachine::update(const SensorsFacade& sensors) {
 
         case SystemState::LANDED:
             Logger::logText("INFO", "Touchdown confirmed");
-            transitionTo(SystemState::SAFE);
+            transitionTo(SystemState::SAFE, &sensors);
             break;
 
         case SystemState::SAFE:
@@ -88,17 +90,25 @@ void StateMachine::update(const SensorsFacade& sensors) {
             Logger::logText("ERROR", "Abort state entered");
             break;
     }
+
+    // Ensure snapshot reflects any state changes by end of update
+    sensors.setState(currentState);
 }
 
 // -----------------------------------------------------------
 // Transition helper
 // -----------------------------------------------------------
-void StateMachine::transitionTo(SystemState newState) {
+void StateMachine::transitionTo(SystemState newState, SensorsFacade* sensors) {
     if (newState == currentState) return;
 
-    Logger::logText("STATE", "→ " + stateName(newState));
+    Logger::logText("STATE", ("→ " + stateName(newState)).c_str());
     currentState = newState;
     lastTransitionTime = millis();
+
+    // Push the new state into the SensorsFacade snapshot if provided
+    if (sensors) {
+        sensors->setState(newState);
+    }
 }
 
 // -----------------------------------------------------------
@@ -116,6 +126,6 @@ String StateMachine::stateName(SystemState s) const {
         case SystemState::LANDED:  return "LANDED";
         case SystemState::SAFE:    return "SAFE";
         case SystemState::ABORT:   return "ABORT";
-        default:                   return "UNKNOWN";
+        default: return "UNKNOWN";
     }
 }

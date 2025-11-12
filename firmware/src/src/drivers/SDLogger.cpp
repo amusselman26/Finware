@@ -5,6 +5,19 @@ SdFat sd;
 File32 binFile;
 File32 txtFile;
 
+// H.U.G.S. Banner
+const char* hugs_banner =
+"=====================================================\n"
+"   H   H  U   U   GGGG   SSSS                      \n"
+"   H   H  U   U  G      S                           \n"
+"   HHHHH  U   U  G  GG   SSS                        \n"
+"   H   H  U   U  G   G      S                       \n"
+"   H   H   UUU    GGGG  SSSS                        \n"
+"-----------------------------------------------------\n"
+"   Humanitarian Utility Guided System (H.U.G.S.)     \n"
+"   University of Miami 2025                          \n"
+"=====================================================\n";
+
 bool sdBegin() {
     if (!sd.begin(SdSpiConfig(SD_CS_PIN, SHARED_SPI, SD_SCK_MHZ(18)))) {
         Serial.println("SD init failed!");
@@ -29,7 +42,7 @@ bool openNextLog(char *binOut, char *txtOut) {
                 Serial.println(txtOut);
 
                 // Write header to text log
-                txtFile.println("=== H.U.G.S. Flight Log Start ===");
+                txtFile.println(hugs_banner);
                 txtFile.println("Firmware: Finware v1.3.2");
                 txtFile.println("Vehicle: HUGS-01");
                 txtFile.println("---------------------------------");
