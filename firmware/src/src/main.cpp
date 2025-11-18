@@ -75,9 +75,12 @@ void loop() {
   fsm.update(sensors);
 
 
+
   // Log a full snapshot to SD (binary)
   const SensorsSnapshot snap_now = sensors.snapshot();
   (void)writeRecord(snap_now); 
+
+  Serial.println(snap_now.batteryVoltage);
 
   if (snap_now.baro.altitude_m < -5) {
     sensors.baro_.calibrateAtm();

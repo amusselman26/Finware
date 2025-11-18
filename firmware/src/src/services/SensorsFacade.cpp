@@ -27,6 +27,11 @@ bool SensorsFacade::begin() {
     if (!ok) {
         Serial.println("GNSS failed to start.");
     }
+
+    Serial.println("About to start battery monitor.");
+    // Initialize battery monitor
+    batteryMonitor_.begin();
+    last_.batteryVoltage = batteryMonitor_.readVoltage();
     return ok;
 }
 
@@ -48,6 +53,8 @@ void SensorsFacade::tick() {
     if (gnss_.ok()) {
         last_.gnss = gnss_.latest();
     }
+
+    last_.batteryVoltage = batteryMonitor_.readVoltage();
 
     // last_.state is preserved and can be updated externally via setState(...)
 }
