@@ -97,7 +97,7 @@ void loop() {
 
   // Send lat, lon, alt over LoRa every 1 s
   static uint32_t lastTxMs = 0;
-  if (nowMs - lastTxMs >= 1000u) {
+  if (nowMs - lastTxMs >= 1000u && fsm.getState() != SystemState::ASCENT){
     TelemetryLLA pkt;
     pkt.lat_e7 = static_cast<int32_t>(snap_now.gnss.lat);  // already in deg * 1e7 per your struct
     pkt.lon_e7 = static_cast<int32_t>(snap_now.gnss.lon);
