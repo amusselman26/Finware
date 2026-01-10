@@ -13,7 +13,6 @@ SensorsFacade::SensorsFacade(uint8_t imu_cs, uint8_t imu_int, int8_t imu_rst,
 bool SensorsFacade::begin() {
     bool ok = true;
     ok &= imu_.begin(); // 200 Hz quaternion
-    Serial.println(ok);
     if (!ok) {
         Serial.println("IMU failed to start.");
 
@@ -28,7 +27,6 @@ bool SensorsFacade::begin() {
         Serial.println("GNSS failed to start.");
     }
 
-    Serial.println("About to start battery monitor.");
     // Initialize battery monitor
     batteryMonitor_.begin();
     last_.batteryVoltage = batteryMonitor_.readVoltage();

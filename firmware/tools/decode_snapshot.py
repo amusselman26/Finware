@@ -7,6 +7,8 @@ import argparse, csv, os, struct
 # C structs (summary):
 # SensorsSnapshot {
 #   uint64_t t_us;
+#   SystemState state;     // enum class -> 4-byte int
+#   float     batteryVoltage;
 #   IMU_Sample imu {
 #     uint64_t t_us;
 #     float q[4];
@@ -28,15 +30,14 @@ import argparse, csv, os, struct
 #     uint32_t seq;
 #   };
 #   uint8_t pad[4];      // tail pad to 8-byte multiple
-# }; // total = 128 B
+# }; // total = 136 B
 
 RECORD_FMT = (
     "<"
     # snapshot
-    "Q"
-    # SystemState (assumed uint32_t) + 4 bytes pad to match C 8-byte alignment
-    "I"      # state
-    "4x"     # pad to align next uint64_t (IMU.t_us) on 8-byte boundary
+    "Q"      # t_us
+    "I"      # state (SystemState underlying int32/uint32)
+    "f"      # batteryVoltage
     # IMU
     "Q"      # imu.t_us
     "4f"     # imu.q[4]
@@ -72,6 +73,7 @@ FIELDS = [
     "t_us",
     # system state
     "state",
+    "batteryVoltage",
     # imu
     "imu_t_us",
     "imu_q0","imu_q1","imu_q2","imu_q3",

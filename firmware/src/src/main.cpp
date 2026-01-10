@@ -38,8 +38,11 @@ struct __attribute__((packed)) TelemetryLLA {
 };
 
 void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW); // off until we know we're healthy
   Serial.begin(115200);
   while (!Serial) {}   // ok to keep setup prints for bring-up
+  Serial.println("Finware Flight Computer Starting...");\
 
   Wire.begin();
 
@@ -67,6 +70,7 @@ void setup() {
     while (true) delay(1000);
   }
   Serial.println("LoRa ready.");
+
 }
 
 void loop() {
@@ -75,12 +79,9 @@ void loop() {
   fsm.update(sensors);
 
 
-
   // Log a full snapshot to SD (binary)
   const SensorsSnapshot snap_now = sensors.snapshot();
   (void)writeRecord(snap_now); 
-
-  Serial.println(snap_now.batteryVoltage);
 
   if (snap_now.baro.altitude_m < -5) {
     sensors.baro_.calibrateAtm();

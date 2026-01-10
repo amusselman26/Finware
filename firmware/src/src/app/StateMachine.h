@@ -20,6 +20,13 @@ private:
     bool armedCommanded = true;
     uint32_t lastTransitionTime = 0;
 
+    // Apogee detection helper function
+    bool apogeeDetected(const SensorsFacade& sensors);
+    float prevAlt = 0.0f;
+    bool altInitialized = false;
+    int apogeeDropCount = 0;
+    uint32_t launchTimeMs = 0;
+
     // Thresholds (tune per vehicle)
     const float liftoffAltitudeThreshold = -5.0f;   // meters
     const float launchAccelThreshold = 5.0f;       // g

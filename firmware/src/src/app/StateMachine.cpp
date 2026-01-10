@@ -2,6 +2,12 @@
 #include "drivers/logger.h" // Provides finware::Logger wrapper
 #include "services/SensorsFacade.hpp"
 
+// Constants for apogee detection
+constexpr float APOGEE_DROP_THRESHOLD = 0; // meters
+constexpr int APOGEE_COUNT_REQUIRED = 4;
+constexpr float MIN_APOGEE_ALT = 0.0f; // meters
+constexpr uint32_t MIN_APOGEE_TIME_MS = 5000; // milliseconds after launch before apogee detection starts
+
 using namespace finware;
 // -----------------------------------------------------------
 // Initialize the FSM
@@ -10,6 +16,30 @@ void StateMachine::init() {
     currentState = SystemState::BOOT;
     Logger::logText("STATE", "BOOT");
     initialized = false;
+}
+
+bool StateMachine::apogeeDetected(const SensorsFacade& sensors) {
+    float currAlt = sensors.baro().altitude_m;
+
+    if (!altInitialized) {
+        prevAlt = currAlt;
+        altInitialized = true;
+        return false;
+    }
+
+    // Guards
+    if (millis() - launchTimeMs < MIN_APOGEE_TIME_MS) return false;
+    if (currAlt < MIN_APOGEE_ALT) return false;
+
+    if (currAlt < prevAlt - APOGEE_DROP_THRESHOLD) {
+        apogeeDropCount++;
+    }
+    else {
+        apogeeDropCount = 0;
+    }
+
+    prevAlt = currAlt;
+    return apogeeDropCount >= APOGEE_COUNT_REQUIRED;
 }
 
 // -----------------------------------------------------------
@@ -45,21 +75,21 @@ void StateMachine::update(SensorsFacade& sensors) {
         case SystemState::ARMED:
             // Detect launch: barometer altitude increase or IMU acceleration
             if (baro.altitude_m > liftoffAltitudeThreshold &&
-                imu.az > launchAccelThreshold) {
+                imu.ax > launchAccelThreshold) {
                 transitionTo(SystemState::LAUNCH);
             }
             break;
 
         case SystemState::LAUNCH:
             // Detect motor burnout: acceleration drops below threshold
-            if (imu.az < burnoutAccelThreshold) {
+            if (imu.ax < burnoutAccelThreshold) {
                 transitionTo(SystemState::ASCENT);
             }
             break;
 
         case SystemState::ASCENT:
             // Detect apogee: vertical velocity crosses zero
-            if (baro.altitude_m > 1500) {  // fix this
+            if (apogeeDetected(sensors)) {  // fix this
                 transitionTo(SystemState::APOGEE);
             }
             break;
@@ -72,7 +102,8 @@ void StateMachine::update(SensorsFacade& sensors) {
 
         case SystemState::DESCENT:
             // Detect landing: altitude stable for a few seconds
-            if (baro.altitude_m < 3.0) {
+            if (sqrt(pow(imu.ax, 2) + pow(imu.ay, 2) + pow(imu.az, 2)) < 0.2f &&
+                baro.altitude_m < 5.0f) {
                 transitionTo(SystemState::LANDED);
             }
             break;
