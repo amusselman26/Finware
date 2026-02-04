@@ -44,4 +44,30 @@ Serial runs at 115200 on COM5. Steps 1-5 may also be done through VS Code and Pl
 ## Software Architecture
 ![Software_Architecture](docs/Software_Architecture.png)
 
+## EKF Range Bearing Tracking
+This project implements an Extended Kalman Filter (EKF) to estimate the 2D cartesian position and velocity of an object observed from the origin using noisy range and bearing measurements.
+
+## Model
+ - State: [x, y, vs, vy]
+ - Process model: constant velocity with white acceleration noise
+ - Measurement model: range and bearing
+  
+## Layout
+src/
+    - ekf.py: EKF implementation
+    - main.py: loads data, runs EKF, generates plots
+  
+data/
+    - measurements.csv: provided range and bearing measurements
+
+plots/ 
+    - Saved figures including state estimates, 3 sigma bounds, and residuals
+
+report/
+    - ekf_range_bearing_report.pdf: technical report describing model and implementation
+
+## How to run
+pip install -r requirements .txt
+python src/main.py
+
 
