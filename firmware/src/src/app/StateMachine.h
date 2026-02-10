@@ -29,6 +29,6 @@ private:
 
     // Thresholds (tune per vehicle)
     const float liftoffAltitudeThreshold = -5.0f;   // meters
-    const float launchAccelThreshold = 5.0f;       // g
+    const float launchAccelThreshold = 50.0f;       // m/s^2
     const float burnoutAccelThreshold = 0.3f;      // g
 };

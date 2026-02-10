@@ -1,9 +1,8 @@
 #include "drivers/SDLogger.h"
 
 // Define global logger objects (single definition)
-SdFat sd;
-File32 binFile;
-File32 txtFile;
+File binFile;
+File txtFile;
 
 // H.U.G.S. Banner
 const char* hugs_banner =
@@ -19,10 +18,9 @@ const char* hugs_banner =
 "=====================================================\n";
 
 bool sdBegin() {
-    if (!sd.begin(SdSpiConfig(SD_CS_PIN, SHARED_SPI, SD_SCK_MHZ(18)))) {
-        Serial.println("SD init failed!");
-        sd.initErrorHalt();
-        return false;
+    Serial.println("Initializing SD...");
+    while (!SD.begin()) {
+        delay(10);
     }
     Serial.println("SD has init.");
     return true;
@@ -32,16 +30,16 @@ bool openNextLog(char *binOut, char *txtOut) {
     for (int i = 1; i <= MAX_LOGS; i++) {
         sprintf(binOut, "LOG%04d.BIN", i);
         sprintf(txtOut, "LOG%04d.TXT", i);
-        if (!sd.exists(binOut) && !sd.exists(txtOut)) {
-            if (binFile.open(binOut, O_WRITE | O_CREAT) &&
-                txtFile.open(txtOut, O_WRITE | O_CREAT)) {
+        if (!SD.exists(binOut) && !SD.exists(txtOut)) {
+            binFile = SD.open(binOut, FILE_WRITE);
+            txtFile = SD.open(txtOut, FILE_WRITE);
 
+            if (binFile && txtFile) {
                 Serial.print("[INFO] Opened logs: ");
                 Serial.print(binOut);
                 Serial.print(" + ");
                 Serial.println(txtOut);
 
-                // Write header to text log
                 txtFile.println(hugs_banner);
                 txtFile.println("Firmware: Finware v1.3.2");
                 txtFile.println("Vehicle: HUGS-01");
@@ -61,13 +59,11 @@ bool openNextLog(char *binOut, char *txtOut) {
 
 bool writeRecord(const SensorsSnapshot &snap) {
     if (!binFile) return false;
-    int written = binFile.write(&snap, sizeof(snap));
-    static uint32_t lastFlush = 0;
-    if (millis() - lastFlush > FLUSH_INTERVAL_MS) {
-        binFile.flush();
-        lastFlush = millis();
-    }
-    return written == sizeof(snap);
+    size_t written = binFile.write(
+        reinterpret_cast<const uint8_t*>(&snap),
+        sizeof(SensorsSnapshot)
+    );
+    return written == sizeof(SensorsSnapshot);
 }
 
 void writeText(const char* tag, const String& msg) {
