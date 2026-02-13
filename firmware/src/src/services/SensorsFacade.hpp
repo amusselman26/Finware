@@ -30,6 +30,11 @@ class SensorsFacade {
     // Update FSM state
     void setState(SystemState s) { last_.state = s; }
 
+    // Reconfigure IMU report type and interval without restarting all sensors
+    bool setIMUReport(sh2_SensorId_t report, uint32_t reportIntervalUs) {
+        return imu_.setReport(report, reportIntervalUs);
+    }
+
     finware::SensorsSnapshot snapshot() const { return last_; }
 
     // Direct (read-only) access to last-good samples

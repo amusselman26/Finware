@@ -4,7 +4,7 @@
 
 // Constants for apogee detection
 constexpr float APOGEE_DROP_THRESHOLD = 0; // meters
-constexpr int APOGEE_COUNT_REQUIRED = 4;
+constexpr int APOGEE_COUNT_REQUIRED = 2;
 constexpr float MIN_APOGEE_ALT = 0.0f; // meters
 constexpr uint32_t MIN_APOGEE_TIME_MS = 5000; // milliseconds after launch before apogee detection starts
 
@@ -89,7 +89,7 @@ void StateMachine::update(SensorsFacade& sensors) {
 
         case SystemState::ASCENT:
             // Detect apogee: vertical velocity crosses zero
-            if (apogeeDetected(sensors)) {  // fix this
+            if (apogeeDetected(sensors)) {
                 transitionTo(SystemState::APOGEE);
             }
             break;

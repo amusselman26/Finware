@@ -17,7 +17,7 @@ public:
 private:
     SystemState currentState = SystemState::BOOT;
     bool initialized = false;
-    bool armedCommanded = true;
+    bool armedCommanded = true; // Default to true for testing; set to false for radio
     uint32_t lastTransitionTime = 0;
 
     // Apogee detection helper function
@@ -29,6 +29,6 @@ private:
 
     // Thresholds (tune per vehicle)
     const float liftoffAltitudeThreshold = -5.0f;   // meters
-    const float launchAccelThreshold = 50.0f;       // m/s^2
+    const float launchAccelThreshold = 20.0f;       // m/s^2
     const float burnoutAccelThreshold = 0.3f;      // g
 };

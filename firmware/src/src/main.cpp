@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#include "services/SensorsFacade.hpp"  // your facade
+#include "services/SensorsFacade.hpp"  // Sensor facade
 #include "drivers/SDLogger.h"          // sdBegin, openNextLog, writeSnapshot, flushLog, closeLog
 #include "drivers/LoRaRadio.h"         // wrapper around RH_RF95 from earlier
 #include "app/StateMachine.h"         // FSM
@@ -31,12 +31,13 @@ LoRaRadio     LoRa(LORA_CS, LORA_INT, LORA_RST, LORA_FREQ);
 StateMachine  fsm;
 FinDriver     fins;              // add this
 
-// Minimal binary packet (little-endian)
+// Minimal binary packet (little-endian) for LLA telemetry
+// Must match the ground receiver's TelemetryLLA layout.
 struct __attribute__((packed)) TelemetryLLA {
-  int32_t lat_e7;   // degrees * 1e7
-  int32_t lon_e7;   // degrees * 1e7
-  float   alt_m;    // meters
-  uint32_t t_ms;    // sender timestamp
+  int32_t  lat_e7;   // degrees * 1e7
+  int32_t  lon_e7;   // degrees * 1e7
+  float    alt_m;    // meters
+  uint32_t t_ms;     // sender timestamp
 };
 
 void setup() {
@@ -86,17 +87,66 @@ void setup() {
 }
 
 void loop() {
+  static SystemState lastState = fsm.getState();
+  
+  // Check for LoRa commands (TEXT packets with 1-byte type header)
+  String cmd;
+  if (LoRa.receiveMessage(cmd, 1)) {      // 0 ms = poll, no blocking
+    cmd.trim();
+    Serial.print("LoRa RX: ");
+    Serial.println(cmd);
+
+    if (cmd == "ARM") {
+      fsm.setArmCommand(true);
+        // After all sensors are initialized, switch IMU to gyro-integrated RV
+      if (!sensors.setIMUReport(SH2_GYRO_INTEGRATED_RV, 5000)) {
+        Serial.println("Failed to set IMU report to GYRO_INTEGRATED_RV");
+      } else {
+        LoRa.sendText("Armed. IMU report set to GYRO_INTEGRATED_RV.");
+      }
+    }
+
+    else if (cmd == "ABORT") {
+      fsm.transitionTo(SystemState::ABORT, &sensors); 
+      LoRa.sendText("Abort command received. Transitioning to ABORT state.");
+    }
+
+    else if (cmd == "CALIB_BARO") {
+      sensors.baro_.calibrateAtm();
+      sensors.baro_.tick(); // update immediately after calibration
+      float alt = sensors.baro().altitude_m;
+      String msg = "Barometer calibrated. Current altitude: " + String(alt, 2) + " m";
+      LoRa.sendText(msg);
+    }
+
+    else if (cmd == "TEST") {
+      fins.finTestSequence(fins);
+      LoRa.sendText("Fin test sequence executed.");
+    }
+    
+    else {
+      Serial.println("LoRa: Unknown command");
+    }
+  }
+
+  // Radio messages for state transitions
+  SystemState current = fsm.getState();
+  if (current != lastState) {
+    String message = "STATE CHANGED TO: " + fsm.stateName(current);
+    LoRa.sendText(message);
+    lastState = current;   // <-- update so it won't repeat
+  }
+
+
   // Update sensors
   sensors.tick();
   fsm.update(sensors);
 
   // Log a full snapshot to SD (binary)
   const SensorsSnapshot snap_now = sensors.snapshot();
-  (void)writeRecord(snap_now);
-
-  if (snap_now.baro.altitude_m < -5) {
-    sensors.baro_.calibrateAtm();
-    sensors.baro_.tick();
+  if(!writeRecord(snap_now)) {
+    LoRa.sendText("Failed to write log record.");
+    
   }
 
   const uint32_t nowMs = millis();
@@ -123,12 +173,16 @@ void loop() {
   static uint32_t lastTxMs = 0;
   if (nowMs - lastTxMs >= 1000u) {
     TelemetryLLA pkt;
-    pkt.lat_e7 = static_cast<int32_t>(snap_now.gnss.lat);
-    pkt.lon_e7 = static_cast<int32_t>(snap_now.gnss.lon);
-    pkt.alt_m  = snap_now.gnss.alt_m;
+    // Degrees * 1e7 to match receiver expectations
+    pkt.lat_e7 = static_cast<int32_t>(snap_now.gnss.lat * 1e7);
+    pkt.lon_e7 = static_cast<int32_t>(snap_now.gnss.lon * 1e7);
+    pkt.alt_m  = snap_now.baro.altitude_m;
     pkt.t_ms   = nowMs;
 
-    LoRa.sendMessage(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    // Send as a typed LLA packet (1-byte header + TelemetryLLA payload)
+    LoRa.sendTyped(LoRaPacketType::LLA,
+                   reinterpret_cast<const uint8_t*>(&pkt),
+                   static_cast<uint8_t>(sizeof(pkt)));
     lastTxMs = nowMs;
   }
 }
