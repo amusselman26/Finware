@@ -27,11 +27,11 @@ bool IMU_BNO085::setReport(sh2_SensorId_t report, uint32_t reportIntervalUs) {
 bool IMU_BNO085::enableReports_() {
   bool ok = true;
   // 1) Rotation vector (your selected flavor)
-  ok &= _bno.enableReport(_reportType, (long)_reportIntervalUs);
-  // 2) Raw accelerometer (m/s^2)
-  ok &= _bno.enableReport(SH2_LINEAR_ACCELERATION, (long)_reportIntervalUs);
-  // 3) Raw gyroscope (rad/s)
-  ok &= _bno.enableReport(SH2_RAW_GYROSCOPE, (long)_reportIntervalUs);
+  ok &= _bno.enableReport(_reportType, 5000); // 5 ms = 200 Hz, which is the max rate for RV reports
+  // 2) Linear acceleration (m/s^2, gravity removed by sensor)
+  ok &= _bno.enableReport(SH2_LINEAR_ACCELERATION, 10000);  // 10 ms = 100 Hz, which is the max rate for accel/gyro reports
+  // 3) Calibrated gyroscope (rad/s)
+  ok &= _bno.enableReport(SH2_GYROSCOPE_CALIBRATED, 5000); // 5 ms = 200 Hz, which is a reasonable rate for gyro data
 
   _healthy = _healthy && ok;
   return ok;
@@ -78,7 +78,7 @@ void IMU_BNO085::tick() {
 
       // --- Accelerometer (m/s^2) ---
       case SH2_LINEAR_ACCELERATION: {
-        const auto &a = _sv.un.accelerometer; // m/s^2
+        const auto &a = _sv.un.linearAcceleration; // m/s^2
         _latest.ax = a.x;
         _latest.ay = a.y;
         _latest.az = a.z;
@@ -88,8 +88,8 @@ void IMU_BNO085::tick() {
         break;
       }
 
-      // --- Gyroscope (rad/s) ---
-      case SH2_RAW_GYROSCOPE: {
+      // --- Gyroscope (rad/s), calibrated ---
+      case SH2_GYROSCOPE_CALIBRATED: {
         const auto &g = _sv.un.gyroscope; // rad/s
         _latest.gx = g.x;
         _latest.gy = g.y;

@@ -1,40 +1,11 @@
 #!/usr/bin/env python3
 import argparse, csv, os, struct
 
-# Little-endian, explicit padding to match natural C layout on Cortex-M (STM32F4).
-# Types: Q=uint64, I=uint32, i=int32, f=float, B=uint8, x=pad byte
-
-# C structs (summary):
-# SensorsSnapshot {
-#   uint64_t t_us;
-#   SystemState state;     // enum class -> 4-byte int
-#   float     batteryVoltage;
-#   IMU_Sample imu {
-#     uint64_t t_us;
-#     float q[4];
-#     uint8_t calib; uint8_t pad[3];
-#     float ax, ay, az;
-#     float gx, gy, gz;
-#     uint32_t seq;
-#   };                   // 56 B
-#   BARO_Sample baro {   // 24 B
-#     uint64_t t_us;
-#     float pressure_hPa, temperature_C, altitude_m;
-#     uint32_t seq;
-#   };
-#   GNSS_Sample gnss {   // 36 B
-#     uint64_t t_us;
-#     int32_t lat, lon;  // deg*1e7
-#     float alt_m, speed_mps, heading_deg;
-#     uint8_t sats_used; uint8_t pad[3];
-#     uint32_t seq;
-#   };
-#   uint8_t pad[4];      // tail pad to 8-byte multiple
-# }; // total = 136 B
+# FlightRecord = SensorsSnapshot (136 B) + float fin_cmd_rad (4 B) = 140 B
 
 RECORD_FMT = (
     "<"
-    # snapshot
+    # ---- SensorsSnapshot ----
     "Q"      # t_us
     "I"      # state (SystemState underlying int32/uint32)
     "f"      # batteryVoltage
@@ -62,16 +33,17 @@ RECORD_FMT = (
     "B"      # gnss.sats_used
     "3x"     # pad before seq
     "I"      # gnss.seq
-    # tail pad to 8-byte boundary
+    # tail pad to 8-byte boundary inside SensorsSnapshot
     "4x"
+    # ---- FlightRecord extra ----
+    "f"      # fin_cmd_rad
 )
 
-RECORD_SIZE = struct.calcsize(RECORD_FMT)  # should be 136 with added SystemState
+RECORD_SIZE = struct.calcsize(RECORD_FMT)  # should be 140
 
 FIELDS = [
     # snapshot
     "t_us",
-    # system state
     "state",
     "batteryVoltage",
     # imu
@@ -96,6 +68,8 @@ FIELDS = [
     "gnss_heading_deg",
     "gnss_sats_used",
     "gnss_seq",
+    # flight record extras
+    "fin_cmd_rad",
 ]
 
 def decode_file(bin_path: str, csv_path: str):
@@ -120,7 +94,7 @@ def decode_file(bin_path: str, csv_path: str):
     print(f"[OK] Wrote {count} records to {csv_path} (RECORD_SIZE={RECORD_SIZE} B)")
 
 def main():
-    ap = argparse.ArgumentParser(description="Decode SensorsSnapshot BIN → CSV")
+    ap = argparse.ArgumentParser(description="Decode FlightRecord BIN → CSV")
     ap.add_argument("bin", help="Path to LOGxxxx.BIN")
     ap.add_argument("-o", "--out", help="Output CSV path (default: same name with .csv)")
     args = ap.parse_args()

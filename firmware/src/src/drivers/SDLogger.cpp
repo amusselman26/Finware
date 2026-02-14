@@ -66,6 +66,15 @@ bool writeRecord(const SensorsSnapshot &snap) {
     return written == sizeof(SensorsSnapshot);
 }
 
+bool writeRecordEx(const void* data, size_t len) {
+  // Use whatever internal file object you already write to in writeRecord()
+  // Example (pseudo, adapt to your SDLogger implementation):
+  if (!binFile) return false;
+  size_t n = binFile.write(reinterpret_cast<const uint8_t*>(data), len);
+  return (n == len);
+}
+
+
 void writeText(const char* tag, const String& msg) {
     if (!txtFile) return;
     uint32_t t_ms = millis();

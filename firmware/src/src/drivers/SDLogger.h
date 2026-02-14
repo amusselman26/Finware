@@ -19,3 +19,4 @@ bool writeRecord(const SensorsSnapshot &snap);
 void writeText(const char* tag, const String& msg);
 void flushLog();
 void closeLog();
+bool writeRecordEx(const void* data, size_t len);

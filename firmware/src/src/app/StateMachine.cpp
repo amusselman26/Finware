@@ -7,6 +7,7 @@ constexpr float APOGEE_DROP_THRESHOLD = 0; // meters
 constexpr int APOGEE_COUNT_REQUIRED = 2;
 constexpr float MIN_APOGEE_ALT = 0.0f; // meters
 constexpr uint32_t MIN_APOGEE_TIME_MS = 5000; // milliseconds after launch before apogee detection starts
+constexpr uint32_t MAX_APOGEE_TIME_MS = 8000; // milliseconds after launch before apogee detection stops
 
 using namespace finware;
 // -----------------------------------------------------------
@@ -19,27 +20,29 @@ void StateMachine::init() {
 }
 
 bool StateMachine::apogeeDetected(const SensorsFacade& sensors) {
-    float currAlt = sensors.baro().altitude_m;
+    // float currAlt = sensors.baro().altitude_m;
 
-    if (!altInitialized) {
-        prevAlt = currAlt;
-        altInitialized = true;
-        return false;
-    }
+    // if (!altInitialized) {
+    //     prevAlt = currAlt;
+    //     altInitialized = true;
+    //     return false;
+    // }
 
     // Guards
-    if (millis() - launchTimeMs < MIN_APOGEE_TIME_MS) return false;
-    if (currAlt < MIN_APOGEE_ALT) return false;
+    // if (millis() - launchTimeMs < MIN_APOGEE_TIME_MS) return false;
+    if (millis() - launchTimeMs < MAX_APOGEE_TIME_MS) return false;
+    else return true;
+    // if (currAlt < MIN_APOGEE_ALT) return false;
 
-    if (currAlt < prevAlt - APOGEE_DROP_THRESHOLD) {
-        apogeeDropCount++;
-    }
-    else {
-        apogeeDropCount = 0;
-    }
+    // if (currAlt < prevAlt - APOGEE_DROP_THRESHOLD) {
+    //     apogeeDropCount++;
+    // }
+    // else {
+    //     apogeeDropCount = 0;
+    // }
 
-    prevAlt = currAlt;
-    return apogeeDropCount >= APOGEE_COUNT_REQUIRED;
+    // prevAlt = currAlt;
+    // return apogeeDropCount >= APOGEE_COUNT_REQUIRED;
 }
 
 // -----------------------------------------------------------
@@ -74,9 +77,9 @@ void StateMachine::update(SensorsFacade& sensors) {
 
         case SystemState::ARMED:
             // Detect launch: barometer altitude increase or IMU acceleration
-            if (baro.altitude_m > liftoffAltitudeThreshold &&
-                imu.ax > launchAccelThreshold) {
+            if (imu.ax > launchAccelThreshold) {
                 transitionTo(SystemState::LAUNCH);
+                launchTimeMs = millis(); // Record launch time for apogee detection
             }
             break;
 
