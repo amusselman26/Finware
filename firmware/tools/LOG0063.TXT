@@ -1,0 +1,19 @@
+=====================================================
+   H   H  U   U   GGGG   SSSS                      
+   H   H  U   U  G      S                           
+   HHHHH  U   U  G  GG   SSS                        
+   H   H  U   U  G   G      S                       
+   H   H   UUU    GGGG  SSSS                        
+-----------------------------------------------------
+   Humanitarian Utility Guided System (H.U.G.S.)     
+   University of Miami 2025                          
+=====================================================
+
+Firmware: Finware v1.3.2
+Vehicle: HUGS-01
+---------------------------------
+[    7083 ms] [INFO] System initialization complete
+[    7083 ms] [STATE] → IDLE
+[    7119 ms] [STATE] → ARMED
+[   38421 ms] [STATE] → LAUNCH
+[   38768 ms] [STATE] → ASCENT

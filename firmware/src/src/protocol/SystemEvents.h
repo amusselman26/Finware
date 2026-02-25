@@ -1,0 +1,13 @@
+#pragma once   
+
+enum class SystemEvent {
+    NONE,
+    INITIALIZED,
+    ARM_COMMAND,
+    LIFTOFF_DETECTED,
+    MOTOR_BURNOUT,
+    APOGEE_DETECTED,
+    MAIN_DEPLOYED,
+    LANDED_DETECTED,
+    ABORT_TRIGGERED,
+};

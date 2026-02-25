@@ -7,5 +7,6 @@
         "vector": "cpp",
         "string_view": "cpp",
         "initializer_list": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "C:/Users/amuss/Documents/Senior Design/Github/Finware/firmware/src/libraries/Adafruit_BusIO"
 }
