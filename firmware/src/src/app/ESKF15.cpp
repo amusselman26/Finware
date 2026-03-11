@@ -1,558 +1,428 @@
-#include "ESKF15.hpp"
+#include "eskf15.h"
 
-namespace finware {
+namespace eskf {
 
-// ---------------- Quaternion ops ----------------
-Quat ESKF15::qmul(const Quat& a, const Quat& b) {
-  return {
-    a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z,
-    a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
-    a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
-    a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w
-  };
+// ------------------------ Quat ------------------------
+
+Quat Quat::operator*(const Quat& q2) const {
+  // Hamilton product
+  return Quat(
+    w*q2.w - x*q2.x - y*q2.y - z*q2.z,
+    w*q2.x + x*q2.w + y*q2.z - z*q2.y,
+    w*q2.y - x*q2.z + y*q2.w + z*q2.x,
+    w*q2.z + x*q2.y - y*q2.x + z*q2.w
+  );
 }
 
-Quat ESKF15::qnorm(const Quat& q) {
-  float n = sqrtf(q.w*q.w + q.x*q.x + q.y*q.y + q.z*q.z);
-  if (n <= 1e-9f) return {1,0,0,0};
-  float inv = 1.0f / n;
-  return {q.w*inv, q.x*inv, q.y*inv, q.z*inv};
+void Quat::normalize() {
+  const float n = sqrtf(w*w + x*x + y*y + z*z);
+  if (n > 0.0f) { w/=n; x/=n; y/=n; z/=n; }
+  else { w=1; x=y=z=0; }
 }
 
-Quat ESKF15::smallAngleQuat(const Vec3& dtheta) {
-  // For small angles: q = [1, 0.5*dtheta]
-  return qnorm({1.0f, 0.5f*dtheta.x, 0.5f*dtheta.y, 0.5f*dtheta.z});
+Vec3 Quat::rotate(const Vec3& v) const {
+  // q * [0,v] * q^{-1}
+  const Quat qv(0, v.x, v.y, v.z);
+  const Quat qi(w, -x, -y, -z); // inverse for unit quat
+  const Quat r = (*this) * qv * qi;
+  return Vec3(r.x, r.y, r.z);
 }
 
-void ESKF15::quatToDCM(const Quat& q_in, float R[3][3]) {
-  Quat q = qnorm(q_in);
-  const float w=q.w, x=q.x, y=q.y, z=q.z;
-
-  R[0][0] = 1.0f - 2.0f*(y*y + z*z);
-  R[0][1] = 2.0f*(x*y - w*z);
-  R[0][2] = 2.0f*(x*z + w*y);
-
-  R[1][0] = 2.0f*(x*y + w*z);
-  R[1][1] = 1.0f - 2.0f*(x*x + z*z);
-  R[1][2] = 2.0f*(y*z - w*x);
-
-  R[2][0] = 2.0f*(x*z - w*y);
-  R[2][1] = 2.0f*(y*z + w*x);
-  R[2][2] = 1.0f - 2.0f*(x*x + y*y);
-}
-
-Vec3 ESKF15::quatRotate(const Quat& q_nb, const Vec3& v_b) {
-  // v_n = q * [0,v] * q_conj
-  Quat q = qnorm(q_nb);
-  Quat vq{0, v_b.x, v_b.y, v_b.z};
-  Quat out = qmul(qmul(q, vq), qconj(q));
-  return {out.x, out.y, out.z};
-}
-
-void ESKF15::skew(const Vec3& a, float S[3][3]) {
-  S[0][0]=0;    S[0][1]=-a.z; S[0][2]= a.y;
-  S[1][0]= a.z; S[1][1]=0;    S[1][2]=-a.x;
-  S[2][0]=-a.y; S[2][1]= a.x; S[2][2]=0;
-}
-
-// ---------------- Matrix utils ----------------
-void ESKF15::matIdentity(float* A, int n) {
-  for (int i=0;i<n;i++){
-    for (int j=0;j<n;j++) A[i*n+j] = (i==j)?1.0f:0.0f;
+Quat Quat::expSmall(const Vec3& dtheta) {
+  // For small angles: Exp(dtheta) ~ [cos(|d|/2), sin(|d|/2) * d/|d|]
+  const float a = norm(dtheta);
+  if (a < 1e-6f) {
+    return Quat(1.0f, 0.5f*dtheta.x, 0.5f*dtheta.y, 0.5f*dtheta.z);
   }
-}
-void ESKF15::matZero(float* A, int r, int c) {
-  for (int i=0;i<r*c;i++) A[i]=0.0f;
+  const float half = 0.5f * a;
+  const float s = sinf(half) / a;
+  return Quat(cosf(half), s*dtheta.x, s*dtheta.y, s*dtheta.z);
 }
 
-void ESKF15::matMul(const float* A, int Ar, int Ac,
-                    const float* B, int Br, int Bc,
-                    float* C) {
-  (void)Br;
-  for (int i=0;i<Ar;i++){
-    for (int j=0;j<Bc;j++){
-      float s=0;
-      for (int k=0;k<Ac;k++) s += A[i*Ac+k]*B[k*Bc+j];
-      C[i*Bc+j]=s;
-    }
+// ------------------------ Matrix inversion ------------------------
+
+template<int N>
+bool invertSmall(const Mat<N,N>& A, Mat<N,N>& Ainv) {
+  // Augment [A | I] and Gauss-Jordan
+  Mat<N,2*N> aug; aug.setZero();
+  for(int i=0;i<N;i++){
+    for(int j=0;j<N;j++) aug.a[i][j] = A.a[i][j];
+    aug.a[i][N+i] = 1.0f;
   }
-}
 
-void ESKF15::matMulT_B(const float* A, int Ar, int Ac,
-                       const float* B, int Br, int Bc,
-                       float* C) {
-  // C = A * B^T, so B is (Br x Bc), B^T is (Bc x Br)
-  (void)Bc;
-  for (int i=0;i<Ar;i++){
-    for (int j=0;j<Br;j++){
-      float s=0;
-      for (int k=0;k<Ac;k++) s += A[i*Ac+k]*B[j*Bc+k];
-      C[i*Br+j]=s;
-    }
-  }
-}
-
-void ESKF15::matMulT_A(const float* A, int Ar, int Ac,
-                       const float* B, int Br, int Bc,
-                       float* C) {
-  // C = A^T * B, A^T is (Ac x Ar)
-  (void)Br;
-  for (int i=0;i<Ac;i++){
-    for (int j=0;j<Bc;j++){
-      float s=0;
-      for (int k=0;k<Ar;k++) s += A[k*Ac+i]*B[k*Bc+j];
-      C[i*Bc+j]=s;
-    }
-  }
-}
-
-bool ESKF15::matInv(float* A, int n) {
-  // Gauss-Jordan with partial pivoting (small n)
-  float I[16*16]; // enough for up to 16
-  if (n > 16) return false;
-  matIdentity(I, n);
-
-  for (int col=0; col<n; col++) {
+  for(int col=0; col<N; col++){
     // pivot
-    int piv = col;
-    float maxv = fabsf(A[col*n + col]);
-    for (int r=col+1;r<n;r++){
-      float v = fabsf(A[r*n + col]);
-      if (v > maxv){ maxv=v; piv=r; }
+    int pivot = col;
+    float best = fabsf(aug.a[col][col]);
+    for(int r=col+1;r<N;r++){
+      float v = fabsf(aug.a[r][col]);
+      if (v > best) { best=v; pivot=r; }
     }
-    if (maxv < 1e-9f) return false;
+    if (best < 1e-9f) return false;
 
-    // swap rows
-    if (piv != col){
-      for (int c=0;c<n;c++){
-        float tmp = A[col*n+c]; A[col*n+c] = A[piv*n+c]; A[piv*n+c]=tmp;
-        tmp = I[col*n+c]; I[col*n+c] = I[piv*n+c]; I[piv*n+c]=tmp;
+    // swap
+    if (pivot != col){
+      for(int j=0;j<2*N;j++){
+        float tmp = aug.a[col][j];
+        aug.a[col][j] = aug.a[pivot][j];
+        aug.a[pivot][j] = tmp;
       }
     }
-
-    float diag = A[col*n + col];
-    float invd = 1.0f / diag;
 
     // normalize row
-    for (int c=0;c<n;c++){
-      A[col*n+c] *= invd;
-      I[col*n+c] *= invd;
-    }
+    const float invp = 1.0f / aug.a[col][col];
+    for(int j=0;j<2*N;j++) aug.a[col][j] *= invp;
 
     // eliminate others
-    for (int r=0;r<n;r++){
+    for(int r=0;r<N;r++){
       if (r==col) continue;
-      float f = A[r*n + col];
-      if (fabsf(f) < 1e-12f) continue;
-      for (int c=0;c<n;c++){
-        A[r*n+c] -= f * A[col*n+c];
-        I[r*n+c] -= f * I[col*n+c];
+      const float f = aug.a[r][col];
+      if (f == 0.0f) continue;
+      for(int j=0;j<2*N;j++){
+        aug.a[r][j] -= f * aug.a[col][j];
       }
     }
   }
 
-  // copy inverse back
-  for (int i=0;i<n*n;i++) A[i]=I[i];
+  // extract
+  for(int i=0;i<N;i++) for(int j=0;j<N;j++) Ainv.a[i][j] = aug.a[i][N+j];
   return true;
 }
 
-// ---------------- ESKF core ----------------
-ESKF15::ESKF15(const ESKF15Config& cfg) : _cfg(cfg) {
-  // Initialize P to something reasonable
-  // dp ~ 10m, dv ~ 3m/s, dtheta ~ 10deg, biases moderate
-  for (int i=0;i<15;i++) for (int j=0;j<15;j++) Pcov[i][j]=0.0f;
+// Explicit instantiations used (1,3,6)
+template bool invertSmall<1>(const Mat<1,1>&, Mat<1,1>&);
+template bool invertSmall<3>(const Mat<3,3>&, Mat<3,3>&);
+template bool invertSmall<6>(const Mat<6,6>&, Mat<6,6>&);
 
-  const float dp2 = 10.0f*10.0f;
-  const float dv2 = 3.0f*3.0f;
-  const float da2 = (0.17f)*(0.17f);     // 10 deg ~ 0.17 rad
-  const float dbg2 = (0.05f)*(0.05f);    // rad/s
-  const float dba2 = (0.5f)*(0.5f);      // m/s^2
+// ------------------------ ESKF15 ------------------------
 
-  for (int i=0;i<3;i++){
-    Pcov[i][i]       = dp2;
-    Pcov[i+3][i+3]   = dv2;
-    Pcov[i+6][i+6]   = da2;
-    Pcov[i+9][i+9]   = dbg2;
-    Pcov[i+12][i+12] = dba2;
+ESKF15::ESKF15() {
+  reset();
+}
+
+void ESKF15::reset() {
+  p = Vec3(0,0,0);
+  v = Vec3(0,0,0);
+  q = Quat::identity();
+  bg = Vec3(0,0,0);
+  ba = Vec3(0,0,0);
+
+  P = Mat<15,15>::Identity();
+
+  // Reasonable defaults (tune these!)
+  sigma_gyr   = 0.02f;   // rad/s/sqrt(Hz)
+  sigma_acc   = 0.20f;   // m/s^2/sqrt(Hz)
+  sigma_bg_rw = 1e-5f;   // rad/s^2/sqrt(Hz)
+  sigma_ba_rw = 0.01f;   // m/s^3/sqrt(Hz)
+
+  // NED: +Down gravity
+  g = Vec3(0,0,9.80665f);
+}
+
+Mat<3,3> ESKF15::skew(const Vec3& w) {
+  Mat<3,3> S; S.setZero();
+  S.a[0][1] = -w.z; S.a[0][2] =  w.y;
+  S.a[1][0] =  w.z; S.a[1][2] = -w.x;
+  S.a[2][0] = -w.y; S.a[2][1] =  w.x;
+  return S;
+}
+
+Mat<3,3> ESKF15::Rnb() const {
+  // Rotation matrix from body to nav given unit quaternion (w,x,y,z)
+  const float w = q.w, x = q.x, y = q.y, z = q.z;
+  Mat<3,3> R; R.setZero();
+
+  R.a[0][0] = 1 - 2*(y*y + z*z);
+  R.a[0][1] = 2*(x*y - w*z);
+  R.a[0][2] = 2*(x*z + w*y);
+
+  R.a[1][0] = 2*(x*y + w*z);
+  R.a[1][1] = 1 - 2*(x*x + z*z);
+  R.a[1][2] = 2*(y*z - w*x);
+
+  R.a[2][0] = 2*(x*z - w*y);
+  R.a[2][1] = 2*(y*z + w*x);
+  R.a[2][2] = 1 - 2*(x*x + y*y);
+
+  return R;
+}
+
+void ESKF15::predict(float dt, const Vec3& gyr_meas, const Vec3& acc_meas) {
+  // --- Nominal propagation ---
+  const Vec3 omega = gyr_meas - bg;   // rad/s
+  const Vec3 f_b   = acc_meas - ba;   // m/s^2 (specific force in body)
+
+  // Attitude: q <- q * Exp(omega*dt)
+  const Vec3 dtheta = omega * dt;
+  q = q * Quat::expSmall(dtheta);
+  q.normalize();
+
+  // Accel to nav + gravity
+  const Vec3 a_n = q.rotate(f_b) + g;
+
+  // Integrate p,v
+  p += v*dt + a_n*(0.5f*dt*dt);
+  v += a_n*dt;
+
+  // --- Covariance propagation (first-order discretization) ---
+  // Error-state ordering: [dp(0:2), dv(3:5), dth(6:8), dbg(9:11), dba(12:14)]
+
+  Mat<15,15> F = Mat<15,15>::Zero();
+
+  // dpdot = dv
+  for(int i=0;i<3;i++) F.a[i][3+i] = 1.0f;
+
+  // dvdot = -R * skew(f_b) * dtheta - R*dba
+  const Mat<3,3> R = Rnb();
+  const Mat<3,3> Sf = skew(f_b);
+  const Mat<3,3> R_Sf = mul(R, Sf);
+  for(int r=0;r<3;r++){
+    for(int c=0;c<3;c++){
+      F.a[3+r][6+c]  = -R_Sf.a[r][c];  // v,theta
+      F.a[3+r][12+c] = -R.a[r][c];     // v,ba
+    }
+  }
+
+  // dthetadot = -skew(omega)*dtheta - dbg
+  const Mat<3,3> Sw = skew(omega);
+  for(int r=0;r<3;r++){
+    for(int c=0;c<3;c++){
+      F.a[6+r][6+c] = -Sw.a[r][c]; // theta,theta
+    }
+    F.a[6+r][9+r] = -1.0f;        // theta,bg
+  }
+
+  // Noise mapping G (15x12): [ng(3), na(3), nbg(3), nba(3)]
+  Mat<15,12> G; G.setZero();
+
+  // theta <- -ng
+  for(int i=0;i<3;i++) G.a[6+i][i] = -1.0f;
+
+  // v <- -R*na
+  for(int r=0;r<3;r++) for(int c=0;c<3;c++) G.a[3+r][3+c] = -R.a[r][c];
+
+  // bg <- nbg
+  for(int i=0;i<3;i++) G.a[9+i][6+i] = 1.0f;
+
+  // ba <- nba
+  for(int i=0;i<3;i++) G.a[12+i][9+i] = 1.0f;
+
+  // Continuous noise covariance Qc (12x12 diagonal)
+  Mat<12,12> Qc = Mat<12,12>::Zero();
+  const float sg2  = sigma_gyr*sigma_gyr;
+  const float sa2  = sigma_acc*sigma_acc;
+  const float sbg2 = sigma_bg_rw*sigma_bg_rw;
+  const float sba2 = sigma_ba_rw*sigma_ba_rw;
+  for(int i=0;i<3;i++){
+    Qc.a[i][i]     = sg2;
+    Qc.a[3+i][3+i] = sa2;
+    Qc.a[6+i][6+i] = sbg2;
+    Qc.a[9+i][9+i] = sba2;
+  }
+
+  // Discretize: Phi ≈ I + F dt, Qd ≈ G Qc G^T dt
+  Mat<15,15> Phi = Mat<15,15>::Identity();
+  for(int i=0;i<15;i++) for(int j=0;j<15;j++) Phi.a[i][j] += F.a[i][j]*dt;
+
+  const Mat<15,12> GQc = mul(G, Qc);
+  Mat<15,15> Qd  = mul(GQc, transpose(G));
+  for(int i=0;i<15;i++) for(int j=0;j<15;j++) Qd.a[i][j] *= dt;
+
+  const Mat<15,15> P1  = mul(Phi, mul(P, transpose(Phi)));
+  P = P1 + Qd;
+
+  // Symmetrize (numerical hygiene)
+  for(int i=0;i<15;i++){
+    for(int j=i+1;j<15;j++){
+      const float s = 0.5f*(P.a[i][j] + P.a[j][i]);
+      P.a[i][j] = s; P.a[j][i] = s;
+    }
   }
 }
 
-void ESKF15::reset(const Vec3& p_ned, const Vec3& v_ned, const Quat& q_nb,
-                   const Vec3& bg, const Vec3& ba) {
-  _p = p_ned;
-  _v = v_ned;
-  _q = qnorm(q_nb);
-  _bg = bg;
-  _ba = ba;
-}
+template<int M>
+void ESKF15::update(const Mat<M,15>& H, const Mat<M,1>& r, const Mat<M,M>& Rm) {
+  // S = H P H^T + R
+  const Mat<M,15> HP  = mul(H, P);
+  Mat<M,M> S = mul(HP, transpose(H)) + Rm;
 
-void ESKF15::predict(float dt, const Vec3& gyro_radps, const Vec3& accel_mps2) {
-  if (dt <= 0) return;
+  Mat<M,M> Sinv;
+  static_assert(M <= 6, "invertSmall supports M<=6");
+  if (!invertSmall<M>(S, Sinv)) return;
 
-  // 1) Nominal propagate attitude using gyro - bg
-  Vec3 w = vsub(gyro_radps, _bg); // body rates
-  // small-angle integration: q_{k+1} = q * exp(0.5*w*dt)
-  Vec3 dth = vmul(w, dt);
-  Quat dq = smallAngleQuat(dth);
-  _q = qnorm(qmul(_q, dq));
+  // K = P H^T S^-1
+  const Mat<15,M> PHt = mul(P, transpose(H));
+  const Mat<15,M> K   = mul(PHt, Sinv);
 
-  // 2) Nominal propagate velocity/position using accel - ba, rotated to nav, add gravity
-  Vec3 f_b = vsub(accel_mps2, _ba);       // specific force estimate in body
-  Vec3 f_n = quatRotate(_q, f_b);         // to nav
-  // add gravity in NED (+Down)
-  Vec3 g_n{0.0f, 0.0f, _cfg.g};
-  Vec3 a_n = vadd(f_n, g_n);
+  // dx = K r
+  const Mat<15,1> dx = mul(K, r);
 
-  _v = vadd(_v, vmul(a_n, dt));
-  _p = vadd(_p, vadd(vmul(_v, dt), vmul(a_n, 0.5f*dt*dt))); // semi-implicit-ish
+  // Inject into nominal
+  inject_(dx);
 
-  // 3) Build continuous-time F and G, then discretize: Phi ≈ I + F dt, Qd ≈ (G Qc G^T) dt
-  // State ordering: [dp(0:2), dv(3:5), dtheta(6:8), dbg(9:11), dba(12:14)]
-  float F[15][15]; // continuous
-  for (int i=0;i<15;i++) for (int j=0;j<15;j++) F[i][j]=0.0f;
+  // Joseph form: P = (I-KH)P(I-KH)^T + K R K^T
+  const Mat<15,15> I = Mat<15,15>::Identity();
+  const Mat<15,15> KH = mul(K, H);
+  const Mat<15,15> A  = I - KH;
 
-  // dp_dot = dv
-  for (int i=0;i<3;i++) F[i][i+3] = 1.0f;
+  const Mat<15,15> APAT = mul(A, mul(P, transpose(A)));
+  const Mat<15,15> KRKt = mul(K, mul(Rm, transpose(K)));
+  P = APAT + KRKt;
 
-  // dv_dot ≈ -R_nb * skew(f_b) * dtheta  - R_nb*dba
-  float Rnb[3][3]; quatToDCM(_q, Rnb);
-  float Sfb[3][3]; skew(f_b, Sfb);
-
-  // -Rnb * Sfb
-  float A[3][3];
-  for (int i=0;i<3;i++){
-    for (int j=0;j<3;j++){
-      float s=0;
-      for (int k=0;k<3;k++) s += Rnb[i][k]*Sfb[k][j];
-      A[i][j] = -s;
+  // Symmetrize
+  for(int i=0;i<15;i++){
+    for(int j=i+1;j<15;j++){
+      const float s = 0.5f*(P.a[i][j] + P.a[j][i]);
+      P.a[i][j] = s; P.a[j][i] = s;
     }
-  }
-  // place into F[dv, dtheta]
-  for (int r=0;r<3;r++) for (int c=0;c<3;c++) F[r+3][c+6] = A[r][c];
-
-  // dv wrt accel bias: -Rnb
-  for (int r=0;r<3;r++) for (int c=0;c<3;c++) F[r+3][c+12] = -Rnb[r][c];
-
-  // dtheta_dot = -dbg  (simplified)
-  for (int i=0;i<3;i++) F[i+6][i+9] = -1.0f;
-
-  // biases random walk -> modeled in Q, F zeros
-
-  // Discrete Phi ≈ I + F dt
-  float Phi[15][15];
-  for (int i=0;i<15;i++){
-    for (int j=0;j<15;j++){
-      Phi[i][j] = (i==j)?1.0f:0.0f;
-      Phi[i][j] += F[i][j]*dt;
-    }
-  }
-
-  // Process noise Qd (15x15)
-  // We inject noise into dv from accel noise, into dtheta from gyro noise,
-  // and into dbg/dba from their random walks.
-  float Qd[15][15]; for (int i=0;i<15;i++) for (int j=0;j<15;j++) Qd[i][j]=0.0f;
-
-  const float sa2  = _cfg.sigma_accel * _cfg.sigma_accel;
-  const float sg2  = _cfg.sigma_gyro  * _cfg.sigma_gyro;
-  const float sbg2 = _cfg.sigma_bg_rw * _cfg.sigma_bg_rw;
-  const float sba2 = _cfg.sigma_ba_rw * _cfg.sigma_ba_rw;
-
-  // dv noise: Rnb * accel_noise
-  // Approx: Q_dv = (Rnb * sa2*I * Rnb^T) * dt = sa2 * I * dt  (since R is orthonormal)
-  for (int i=0;i<3;i++) Qd[i+3][i+3] += sa2 * dt;
-
-  // dtheta noise from gyro measurement noise (integrated): sg2 * dt
-  for (int i=0;i<3;i++) Qd[i+6][i+6] += sg2 * dt;
-
-  // bias random walk
-  for (int i=0;i<3;i++) Qd[i+9][i+9]   += sbg2 * dt;
-  for (int i=0;i<3;i++) Qd[i+12][i+12] += sba2 * dt;
-
-  // P = Phi P Phi^T + Qd
-  float Ptmp[15][15]; for (int i=0;i<15;i++) for (int j=0;j<15;j++) Ptmp[i][j]=0.0f;
-  // Ptmp = Phi*P
-  for (int i=0;i<15;i++){
-    for (int j=0;j<15;j++){
-      float s=0;
-      for (int k=0;k<15;k++) s += Phi[i][k]*Pcov[k][j];
-      Ptmp[i][j]=s;
-    }
-  }
-  float Pnew[15][15]; for (int i=0;i<15;i++) for (int j=0;j<15;j++) Pnew[i][j]=0.0f;
-  // Pnew = Ptmp * Phi^T
-  for (int i=0;i<15;i++){
-    for (int j=0;j<15;j++){
-      float s=0;
-      for (int k=0;k<15;k++) s += Ptmp[i][k]*Phi[j][k];
-      Pnew[i][j]=s + Qd[i][j];
-    }
-  }
-  // copy back
-  for (int i=0;i<15;i++) for (int j=0;j<15;j++) Pcov[i][j]=Pnew[i][j];
-}
-
-bool ESKF15::updateGPS(const GPSMeas& gps) {
-  if (!gps.valid) return false;
-
-  // --- position update (3) ---
-  {
-    float r[3] = {
-      gps.p_ned_m.x - _p.x,
-      gps.p_ned_m.y - _p.y,
-      gps.p_ned_m.z - _p.z
-    };
-
-    float H[3*15]; // row-major (m x 15)
-    for (int i=0;i<3*15;i++) H[i]=0.0f;
-    // residual depends on dp directly: h = p, so r = z - p => H = [I3, 0]
-    for (int i=0;i<3;i++) H[i*15 + i] = 1.0f;
-
-    float Rm[3*3]; for (int i=0;i<9;i++) Rm[i]=0.0f;
-    for (int i=0;i<3;i++) Rm[i*3+i] = _cfg.sigma_gps_pos * _cfg.sigma_gps_pos;
-
-    if (!updateGeneric(H, 3, r, Rm, _cfg.nis_gate_gps_pos)) {
-      // reject pos update if gated
-      // still try vel update below
-    }
-  }
-
-  // --- velocity update (3) ---
-  {
-    float r[3] = {
-      gps.v_ned_mps.x - _v.x,
-      gps.v_ned_mps.y - _v.y,
-      gps.v_ned_mps.z - _v.z
-    };
-
-    float H[3*15];
-    for (int i=0;i<3*15;i++) H[i]=0.0f;
-    for (int i=0;i<3;i++) H[i*15 + (i+3)] = 1.0f;
-
-    float Rm[3*3]; for (int i=0;i<9;i++) Rm[i]=0.0f;
-    for (int i=0;i<3;i++) Rm[i*3+i] = _cfg.sigma_gps_vel * _cfg.sigma_gps_vel;
-
-    return updateGeneric(H, 3, r, Rm, _cfg.nis_gate_gps_vel);
   }
 }
 
-bool ESKF15::updateBaro(const BaroMeas& baro) {
-  if (!baro.valid) return false;
+template<int M>
+void ESKF15::updateMasked(const Mat<M,15>& H, const Mat<M,1>& r, const Mat<M,M>& Rm,
+                          uint16_t mask) {
+  // S = HPH^T + R
+  const Mat<M,15> HP  = mul(H, P);
+  Mat<M,M> S = mul(HP, transpose(H)) + Rm;
 
-  // measurement: z_down = p.z (Down)
-  float r = baro.z_down_m - _p.z;
+  Mat<M,M> Sinv;
+  static_assert(M <= 6, "invertSmall supports M<=6");
+  if (!invertSmall<M>(S, Sinv)) return;
 
-  float H[1*15]; for (int i=0;i<15;i++) H[i]=0.0f;
-  H[2] = 1.0f; // dp_z
+  // K = P H^T S^-1
+  const Mat<15,M> PHt = mul(P, transpose(H));
+  Mat<15,M> K = mul(PHt, Sinv);
 
-  float Rm = _cfg.sigma_baro_z * _cfg.sigma_baro_z;
-  return updateGeneric(H, 1, &r, &Rm, _cfg.nis_gate_baro);
+  // Mask out state blocks we don't want to correct
+  auto zero_rows = [&](int r0, int r1){
+    for(int rr=r0; rr<=r1; rr++)
+      for(int c=0;c<M;c++) K.a[rr][c] = 0.0f;
+  };
+
+  if (!(mask & UPD_DP))  zero_rows(0,2);
+  if (!(mask & UPD_DV))  zero_rows(3,5);
+  if (!(mask & UPD_DTH)) zero_rows(6,8);
+  if (!(mask & UPD_DBG)) zero_rows(9,11);
+  if (!(mask & UPD_DBA)) zero_rows(12,14);
+
+  // dx = K r
+  const Mat<15,1> dx = mul(K, r);
+
+  // Inject correction
+  inject_(dx);
+
+  // Joseph form covariance update
+  const Mat<15,15> I = Mat<15,15>::Identity();
+  const Mat<15,15> KH = mul(K, H);
+  const Mat<15,15> A  = I - KH;
+
+  const Mat<15,15> APAT = mul(A, mul(P, transpose(A)));
+  const Mat<15,15> KRKt = mul(K, mul(Rm, transpose(K)));
+  P = APAT + KRKt;
+
+  // Symmetrize
+  for(int i=0;i<15;i++){
+    for(int j=i+1;j<15;j++){
+      const float s = 0.5f*(P.a[i][j] + P.a[j][i]);
+      P.a[i][j] = s; P.a[j][i] = s;
+    }
+  }
 }
 
-bool ESKF15::updateAttitude(const AttMeas& att) {
-  if (!att.valid) return false;
+// Explicit instantiations for common measurement sizes
+template void ESKF15::update<1>(const Mat<1,15>&, const Mat<1,1>&, const Mat<1,1>&);
+template void ESKF15::update<3>(const Mat<3,15>&, const Mat<3,1>&, const Mat<3,3>&);
+template void ESKF15::update<6>(const Mat<6,15>&, const Mat<6,1>&, const Mat<6,6>&);
+template void ESKF15::updateMasked<1>(const Mat<1,15>&, const Mat<1,1>&, const Mat<1,1>&, uint16_t);
+template void ESKF15::updateMasked<3>(const Mat<3,15>&, const Mat<3,1>&, const Mat<3,3>&, uint16_t);
+template void ESKF15::updateMasked<6>(const Mat<6,15>&, const Mat<6,1>&, const Mat<6,6>&, uint16_t);
 
-  // We treat measured q_nb as an attitude measurement:
-  // q_err = q_meas * conj(q_nom)
-  // For small angles: q_err ≈ [1, 0.5*dtheta]
-  Quat q_meas = qnorm(att.q_nb);
-  Quat q_nom  = qnorm(_q);
+void ESKF15::inject_(const Mat<15,1>& dx) {
+  // Extract pieces (make non-const so we can clamp)
+  Vec3 dp (dx.a[0][0],  dx.a[1][0],  dx.a[2][0]);
+  Vec3 dv (dx.a[3][0],  dx.a[4][0],  dx.a[5][0]);
+  Vec3 dth(dx.a[6][0],  dx.a[7][0],  dx.a[8][0]);
+  Vec3 dbg(dx.a[9][0],  dx.a[10][0], dx.a[11][0]);
+  Vec3 dba(dx.a[12][0], dx.a[13][0], dx.a[14][0]);
 
-  Quat q_err = qmul(q_meas, qconj(q_nom));
-  q_err = qnorm(q_err);
+  // If we don't have a heading reference (mag or GPS course while moving),
+  // yaw and bg.z are not observable. Do NOT let the filter change them.
+  if (!heading_observable) {
+    dth.z = 0.0f;  // block yaw correction
+    dbg.z = 0.0f;  // block z gyro-bias correction
+  }
 
-  // Map quaternion error to small angle: dtheta ≈ 2 * vec(q_err) * sign(w)
-  float sgn = (q_err.w >= 0.0f) ? 1.0f : -1.0f;
-  Vec3 dtheta_meas{ 2.0f*sgn*q_err.x, 2.0f*sgn*q_err.y, 2.0f*sgn*q_err.z };
+  // Inject into nominal state
+  p += dp;
+  v += dv;
 
-  float r[3] = { dtheta_meas.x, dtheta_meas.y, dtheta_meas.z };
+  q = q * Quat::expSmall(dth);
+  q.normalize();
 
-  float H[3*15]; for (int i=0;i<3*15;i++) H[i]=0.0f;
-  // residual is directly dtheta error state
-  for (int i=0;i<3;i++) H[i*15 + (i+6)] = 1.0f;
+  bg += dbg;
+  ba += dba;
 
-  float Rm[3*3]; for (int i=0;i<9;i++) Rm[i]=0.0f;
-  for (int i=0;i<3;i++) Rm[i*3+i] = _cfg.sigma_att_meas * _cfg.sigma_att_meas;
-
-  return updateGeneric(H, 3, r, Rm, _cfg.nis_gate_att);
+  // Error-state reset (needs the SAME dth we injected)
+  resetErrorState_(dth);
 }
 
-bool ESKF15::updateGeneric(const float* H, int m, const float* r, const float* R, float nis_gate) {
-  // Compute S = H P H^T + R   (m x m)
-  float HP[16*15]; // m x 15, max m=3 here but allow up to 16
-  if (m > 16) return false;
+void ESKF15::resetErrorState_(const Vec3& dtheta) {
+  // ESKF "reset" for theta: G_theta = I - 0.5*skew(dtheta)
+  Mat<15,15> G = Mat<15,15>::Identity();
+  const Mat<3,3> S = skew(dtheta);
 
-  // HP = H * P
-  for (int i=0;i<m;i++){
-    for (int j=0;j<15;j++){
-      float s=0;
-      for (int k=0;k<15;k++) s += H[i*15+k]*Pcov[k][j];
-      HP[i*15+j]=s;
+  for(int r=0;r<3;r++){
+    for(int c=0;c<3;c++){
+      G.a[6+r][6+c] = (r==c ? 1.0f : 0.0f) - 0.5f * S.a[r][c];
     }
   }
 
-  float S[16*16]; matZero(S, m, m);
-
-  // S = HP * H^T + R
-  for (int i=0;i<m;i++){
-    for (int j=0;j<m;j++){
-      float s=0;
-      for (int k=0;k<15;k++) s += HP[i*15+k]*H[j*15+k];
-      S[i*m+j]=s + R[i*m+j];
-    }
-  }
-
-  // Gate by NIS = r^T S^{-1} r
-  float Sinv[16*16];
-  for (int i=0;i<m*m;i++) Sinv[i]=S[i];
-  if (!matInv(Sinv, m)) return false;
-
-  float nis = 0.0f;
-  // tmp = Sinv * r
-  float tmp[16]; for (int i=0;i<m;i++){
-    float s=0; for (int j=0;j<m;j++) s += Sinv[i*m+j]*r[j];
-    tmp[i]=s;
-  }
-  for (int i=0;i<m;i++) nis += r[i]*tmp[i];
-
-  if (nis > nis_gate) {
-    return false; // reject
-  }
-
-  // Kalman gain: K = P H^T S^{-1}  (15 x m)
-  // First PHt = P H^T = (15 x m)
-  float PHt[15*16]; // 15 x m
-  for (int i=0;i<15;i++){
-    for (int j=0;j<m;j++){
-      float s=0;
-      for (int k=0;k<15;k++) s += Pcov[i][k]*H[j*15+k];
-      PHt[i*m+j]=s;
-    }
-  }
-
-  float K[15*16]; // 15 x m
-  for (int i=0;i<15;i++){
-    for (int j=0;j<m;j++){
-      float s=0;
-      for (int k=0;k<m;k++) s += PHt[i*m+k]*Sinv[k*m+j];
-      K[i*m+j]=s;
-    }
-  }
-
-  // dx = K * r
-  float dx[15]; for (int i=0;i<15;i++){
-    float s=0; for (int j=0;j<m;j++) s += K[i*m+j]*r[j];
-    dx[i]=s;
-  }
-
-  // Joseph form covariance update:
-  // P = (I-KH) P (I-KH)^T + K R K^T
-  float I[15*15]; matIdentity(I, 15);
-
-  float KH[15*15]; matZero(KH, 15, 15);
-  for (int i=0;i<15;i++){
-    for (int j=0;j<15;j++){
-      float s=0;
-      for (int k=0;k<m;k++) s += K[i*m+k]*H[k*15+j];
-      KH[i*15+j]=s;
-    }
-  }
-
-  float IKH[15*15];
-  for (int i=0;i<15;i++) for (int j=0;j<15;j++) IKH[i*15+j] = I[i*15+j] - KH[i*15+j];
-
-  // temp = (I-KH) P
-  float Pflat[15*15];
-  for (int i=0;i<15;i++) for (int j=0;j<15;j++) Pflat[i*15+j] = Pcov[i][j];
-
-  float temp[15*15];
-  matMul(IKH, 15, 15, Pflat, 15, 15, temp);
-
-  // P1 = temp (I-KH)^T
-  float P1[15*15];
-  matMulT_B(temp, 15, 15, IKH, 15, 15, P1);
-
-  // KRKt = K R K^T
-  float KR[15*16]; matZero(KR, 15, m);
-  // KR = K*R
-  for (int i=0;i<15;i++){
-    for (int j=0;j<m;j++){
-      float s=0; for (int k=0;k<m;k++) s += K[i*m+k]*R[k*m+j];
-      KR[i*m+j]=s;
-    }
-  }
-  float KRKt[15*15]; matZero(KRKt, 15, 15);
-  // KRKt = KR * K^T
-  for (int i=0;i<15;i++){
-    for (int j=0;j<15;j++){
-      float s=0; for (int k=0;k<m;k++) s += KR[i*m+k]*K[j*m+k];
-      KRKt[i*15+j]=s;
-    }
-  }
-
-  // Pnew = P1 + KRKt
-  for (int i=0;i<15;i++){
-    for (int j=0;j<15;j++){
-      Pcov[i][j] = P1[i*15+j] + KRKt[i*15+j];
-    }
-  }
-
-  // Inject correction into nominal + reset
-  injectAndReset(dx);
-  return true;
+  P = mul(G, mul(P, transpose(G)));
 }
 
-void ESKF15::injectAndReset(const float dx[15]) {
-  // dx: [dp,dv,dtheta,dbg,dba]
-  Vec3 dp{dx[0],dx[1],dx[2]};
-  Vec3 dv{dx[3],dx[4],dx[5]};
-  Vec3 dth{dx[6],dx[7],dx[8]};
-  Vec3 dbg{dx[9],dx[10],dx[11]};
-  Vec3 dba{dx[12],dx[13],dx[14]};
-
-  _p = vadd(_p, dp);
-  _v = vadd(_v, dv);
-
-  // attitude injection: q <- q * exp(0.5*dtheta)
-  Quat dq = smallAngleQuat(dth);
-  _q = qnorm(qmul(_q, dq));
-
-  _bg = vadd(_bg, dbg);
-  _ba = vadd(_ba, dba);
-
-  // Covariance reset for ESKF (first-order):
-  // P <- G P G^T, where G adjusts attitude error after injection:
-  // G = I, except dtheta block: (I - 0.5*skew(dtheta))
-  float G[15][15];
-  for (int i=0;i<15;i++) for (int j=0;j<15;j++) G[i][j] = (i==j)?1.0f:0.0f;
-
-  float Sd[3][3]; skew(dth, Sd);
-  // (I - 0.5*Sd)
-  for (int r=0;r<3;r++){
-    for (int c=0;c<3;c++){
-      float val = (r==c)?1.0f:0.0f;
-      val -= 0.5f * Sd[r][c];
-      G[r+6][c+6] = val;
-    }
+void ESKF15::updateGPSPosVel(const Vec3& pos_meas, const Vec3& vel_meas,
+                            float sigma_pos, float sigma_vel) {
+  // z = [p; v], h = [p; v]
+  Mat<6,15> H = Mat<6,15>::Zero();
+  for(int i=0;i<3;i++){
+    H.a[i][i]     = 1.0f; // pos wrt dp
+    H.a[3+i][3+i] = 1.0f; // vel wrt dv
   }
 
-  // P = G P G^T
-  float Ptmp[15][15]; for (int i=0;i<15;i++) for (int j=0;j<15;j++) Ptmp[i][j]=0.0f;
-  for (int i=0;i<15;i++){
-    for (int j=0;j<15;j++){
-      float s=0;
-      for (int k=0;k<15;k++) s += G[i][k]*Pcov[k][j];
-      Ptmp[i][j]=s;
-    }
+  Mat<6,1> r; r.setZero();
+  r.a[0][0] = pos_meas.x - p.x;
+  r.a[1][0] = pos_meas.y - p.y;
+  r.a[2][0] = pos_meas.z - p.z;
+  r.a[3][0] = vel_meas.x - v.x;
+  r.a[4][0] = vel_meas.y - v.y;
+  r.a[5][0] = vel_meas.z - v.z;
+
+  Mat<6,6> Rm = Mat<6,6>::Zero();
+  const float sp2 = sigma_pos*sigma_pos;
+  const float sv2 = sigma_vel*sigma_vel;
+  for(int i=0;i<3;i++) {
+    Rm.a[i][i]     = sp2;
+    Rm.a[3+i][3+i] = sv2;
   }
-  float Pnew[15][15]; for (int i=0;i<15;i++) for (int j=0;j<15;j++) Pnew[i][j]=0.0f;
-  for (int i=0;i<15;i++){
-    for (int j=0;j<15;j++){
-      float s=0;
-      for (int k=0;k<15;k++) s += Ptmp[i][k]*G[j][k];
-      Pnew[i][j]=s;
-    }
-  }
-  for (int i=0;i<15;i++) for (int j=0;j<15;j++) Pcov[i][j]=Pnew[i][j];
+
+  // GPS pos/vel should not affect attitude or gyro bias unless heading is observable.
+  updateMasked<6>(H, r, Rm, UPD_DP | UPD_DV);
 }
 
-} // namespace finware
+void ESKF15::updateBaroAlt(float alt_m_up, float sigma_alt) {
+  // h = -p.z (since p.z is Down in NED); z is Up-positive altitude
+  Mat<1,15> H = Mat<1,15>::Zero();
+  H.a[0][2] = -1.0f; // d(-p.z)/d(dpz) = -1
+
+  Mat<1,1> r; r.setZero();
+  const float h = -p.z;
+  r.a[0][0] = alt_m_up - h;
+
+  Mat<1,1> Rm; Rm.setZero();
+  Rm.a[0][0] = sigma_alt*sigma_alt;
+
+  // Baro should NOT correct attitude or gyro bias. Only allow position/velocity corrections.
+  updateMasked<1>(H, r, Rm, UPD_DP | UPD_DV);
+}
+
+} // namespace eskf
