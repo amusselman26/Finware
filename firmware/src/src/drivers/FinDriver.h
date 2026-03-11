@@ -43,14 +43,14 @@ public:
 
         // All fins to -10°
         for (int i = 0; i < NUM_FINS; ++i) {
-            angles[i] = -3.0f;
+            angles[i] = -10.0f;
         }
         fins.setAllFinAngles(angles);
         delay(1000);  // optional pause
 
         // All fins to +10°
         for (int i = 0; i < NUM_FINS; ++i) {
-            angles[i] = 3.0f;
+            angles[i] = 10.0f;
         }
         fins.setAllFinAngles(angles);
         delay(1000);  // optional pause

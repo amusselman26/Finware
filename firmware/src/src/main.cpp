@@ -93,7 +93,7 @@ void setup() {
   }
   if (!openNextLog(binFilename, txtFilename)) {
     Serial.println("Failed to open next log file!");
-    while (true) delay(1000);
+    while (true) delay(1000);               
   }
   Serial.print("Logging to "); Serial.println(txtFilename);
 
@@ -253,6 +253,7 @@ void loop() {
     Serial.println(loopCount);
     loopCount = 0;
     lastLpsMs = nowMs;
+    Serial.println(g_rollParams.phi_cmd_rad);
   }
 
   // Serial.println(snap_now.imu.ax);

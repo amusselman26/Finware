@@ -7,7 +7,7 @@ constexpr float APOGEE_DROP_THRESHOLD = 0; // meters
 constexpr int APOGEE_COUNT_REQUIRED = 2;
 constexpr float MIN_APOGEE_ALT = 0.0f; // meters
 constexpr uint32_t MIN_APOGEE_TIME_MS = 5000; // milliseconds after launch before apogee detection starts
-constexpr uint32_t MAX_APOGEE_TIME_MS = 8000; // milliseconds after launch before apogee detection stops
+constexpr uint32_t MAX_APOGEE_TIME_MS = 10000; // milliseconds after launch before apogee detection stops
 
 using namespace finware;
 // -----------------------------------------------------------
