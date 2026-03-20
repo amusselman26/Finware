@@ -1,12 +1,14 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <algorithm>
+#include <cmath>
 
 #include "services/SensorsFacade.hpp"  // Sensor facade
 #include "drivers/SDLogger.h"          // sdBegin, openNextLog, writeSnapshot, flushLog, closeLog
 #include "drivers/LoRaRadio.h"         // wrapper around RH_RF95 from earlier
 #include "app/StateMachine.h"         // FSM
 #include "drivers/FinDriver.h"         // add this
-#include "app/RollPDController.h"      // roll PD controller
+#include "app/RocketAttitudeController.hpp"
 
 using namespace finware;
 
@@ -32,18 +34,20 @@ LoRaRadio     LoRa(LORA_CS, LORA_INT, LORA_RST, LORA_FREQ);
 StateMachine  fsm;
 FinDriver     fins;  // commented out to disable fin commands
 
-// PD controller globals
-// Tune these values for your airframe
-RollPDParams g_rollParams = {
-  .kp           = 0.6f,
-  .kd           = 0.3f,
-  .phi_cmd_rad  = 0.0f,          // hold zero roll until launch detected
-  .u_max_rad        = 10.0f * static_cast<float>(M_PI) / 180.0f,   // +/- 10 deg
-  .u_rate_max_rads  = 400.0f * static_cast<float>(M_PI) / 180.0f  // 400 deg/s
+const finware::app::AttitudeControllerConfig g_attCfg = {
+  .roll = {.kp = 0.6f, .kd = 0.35f},
+  .pitch = {.kp = 2.0f, .kd = 0.3f},
+  .yaw = {.kp = 2.0f, .kd = 0.3f},
+  .fin_limit_rad = 10.0f * static_cast<float>(M_PI) / 180.0f
 };
 
-RollPDState g_rollState{false, 0.0f};
-bool g_rollControlEnabled = false;   // becomes true after ARM command
+finware::app::RocketAttitudeController g_attController(g_attCfg);
+const finware::app::Vec3 g_cmdEulerRpyRad = {
+  0.0f,
+  0.5f * static_cast<float>(M_PI),
+  0.0f
+};
+bool g_attControlEnabled = false;
 
 // Minimal binary packet (little-endian) for LLA telemetry
 // Must match the ground receiver's TelemetryLLA layout.
@@ -56,8 +60,29 @@ struct __attribute__((packed)) TelemetryLLA {
 
 struct __attribute__((packed)) FlightRecord {
   SensorsSnapshot snap;    // existing snapshot (unchanged contents)
-  float fin_cmd_rad;       // commanded fin angle (roll command) [rad]
+  float fin_cmd_rad;       // max abs commanded fin angle [rad]
 };
+
+static finware::app::Mat3 quatToDcmBE(const IMU_Sample& imu) {
+  const float qw = imu.q[0];
+  const float qx = imu.q[1];
+  const float qy = imu.q[2];
+  const float qz = imu.q[3];
+
+  const float sinr_cosp = 2.0f * (qw * qx + qy * qz);
+  const float cosr_cosp = 1.0f - 2.0f * (qx * qx + qy * qy);
+  const float roll = atan2f(sinr_cosp, cosr_cosp);
+
+  float sinp = 2.0f * (qw * qy - qz * qx);
+  sinp = finware::app::clamp(sinp, -1.0f, 1.0f);
+  const float pitch = asinf(sinp);
+
+  const float siny_cosp = 2.0f * (qw * qz + qx * qy);
+  const float cosy_cosp = 1.0f - 2.0f * (qy * qy + qz * qz);
+  const float yaw = atan2f(siny_cosp, cosy_cosp);
+
+  return finware::app::euler321ToDCM(roll, pitch, yaw);
+}
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -123,16 +148,13 @@ void loop() {
       } else {
         LoRa.sendText("Armed. IMU report set to GYRO_INTEGRATED_RV.");
       }
-      // Reset roll controller on ARM; it will be enabled on launch
-      g_rollParams.phi_cmd_rad = 0.0f;  // start from zero-roll command when armed
-      roll_pd_reset(g_rollState, 0.0f);
+      g_attControlEnabled = false;
     }
 
     else if (cmd == "ABORT") {
       fsm.transitionTo(SystemState::ABORT, &sensors); 
       LoRa.sendText("Abort command received. Transitioning to ABORT state.");
-      // Disable roll controller and (was) drive fins to neutral on abort
-      g_rollControlEnabled = false;
+      g_attControlEnabled = false;
       fins.commandNeutral();
     }
 
@@ -159,18 +181,17 @@ void loop() {
   if (current != lastState) {
     String message = "STATE CHANGED TO: " + fsm.stateName(current);
     LoRa.sendText(message);
-    // When launch is detected, begin rolling to 1.8 rad
+    // Enable closed-loop fin control at launch.
     if (current == SystemState::LAUNCH) {
-      g_rollControlEnabled = true; // Enable roll control only on launch
-      g_rollParams.phi_cmd_rad = 1.8f;
-      Serial.println("Launch detected: roll command set to 1.8 rad.");
+      g_attControlEnabled = true;
+      Serial.println("Launch detected: attitude control enabled.");
     }
     lastState = current;   // <-- update so it won't repeat
 
-    // Disable roll control at apogee
+    // Disable closed-loop control at apogee.
     if (current == SystemState::APOGEE) {
-      g_rollControlEnabled = false; // Disable roll control at apogee
-      Serial.println("Apogee detected: roll control disabled.");
+      g_attControlEnabled = false;
+      Serial.println("Apogee detected: attitude control disabled.");
     }
   }
 
@@ -184,48 +205,15 @@ void loop() {
 
   const uint32_t nowMs = millis();
 
-  // Roll controller
-  // Use IMU quaternion + gyro X as roll angle and roll rate.
-  static uint64_t lastImuTUs = 0;
-  float phi_meas_rad = 0.0f;
-  float p_meas_rads  = 0.0f;
-  float u_cmd_rad    = 0.0f;
+  finware::app::FinCommands fin_cmd_rad{0.0f, 0.0f, 0.0f, 0.0f};
 
   const IMU_Sample& imu = sensors.imu();
   if (imu.t_us != 0) {
-    const float qw = imu.q[0];
-    const float qx = imu.q[1];
-    const float qy = imu.q[2];
-    const float qz = imu.q[3];
-
-    // Quaternion -> roll (rad), X-axis, aerospace convention
-    const float sinr_cosp = 2.0f * (qw * qx + qy * qz);
-    const float cosr_cosp = 1.0f - 2.0f * (qx * qx + qy * qy);
-    phi_meas_rad = atan2f(sinr_cosp, cosr_cosp);
-
-    p_meas_rads = imu.gx;  // gyro X [rad/s]
-
-    float dt_s = 0.0f;
-    if (lastImuTUs != 0 && imu.t_us > lastImuTUs) {
-      dt_s = static_cast<float>(imu.t_us - lastImuTUs) * 1e-6f;
+    if (g_attControlEnabled) {
+      const finware::app::Mat3 current_dcm_be = quatToDcmBE(imu);
+      const finware::app::Vec3 body_rates_pqr = {imu.gx, imu.gy, imu.gz};
+      fin_cmd_rad = g_attController.update(current_dcm_be, g_cmdEulerRpyRad, body_rates_pqr);
     }
-    lastImuTUs = imu.t_us;
-
-    // Controller always runs, but only applies when g_rollControlEnabled=true
-    u_cmd_rad = roll_pd_update(g_rollParams,
-                               g_rollState,
-                               phi_meas_rad,
-                               p_meas_rads,
-                               dt_s,
-                               g_rollControlEnabled);
-  } else {
-    // No IMU data yet: keep controller in a benign state
-    u_cmd_rad = roll_pd_update(g_rollParams,
-                               g_rollState,
-                               0.0f,
-                               0.0f,
-                               0.0f,
-                               false);
   }
 
   static float u_sent_rad = 0.0f; // for logging
@@ -233,14 +221,16 @@ void loop() {
   static uint32_t lastFinUpdateMs = 0;
   if (nowMs - lastFinUpdateMs >= 20u) {   // 50 Hz
     float angles[NUM_FINS];
-    const float u_deg = u_cmd_rad * (180.0f / static_cast<float>(M_PI));
-    for (int i = 0; i < NUM_FINS; ++i) {
-      angles[i] = u_deg;   // same roll command to all fins (canted fins yield roll)
-    }
+    const float rad_to_deg = 180.0f / static_cast<float>(M_PI);
+    angles[FIN_TOP] = fin_cmd_rad.d1 * rad_to_deg;
+    angles[FIN_RIGHT] = fin_cmd_rad.d2 * rad_to_deg;
+    angles[FIN_BOTTOM] = fin_cmd_rad.d3 * rad_to_deg;
+    angles[FIN_LEFT] = fin_cmd_rad.d4 * rad_to_deg;
     fins.setAllFinAngles(angles);
     lastFinUpdateMs = nowMs;
-    u_sent_rad = u_cmd_rad; // for logging
-    // Serial.println("Fin angles (deg): " + String(u_deg, 2));
+    u_sent_rad = std::max(
+        std::max(fabsf(fin_cmd_rad.d1), fabsf(fin_cmd_rad.d2)),
+        std::max(fabsf(fin_cmd_rad.d3), fabsf(fin_cmd_rad.d4)));
   }
 
   
@@ -253,7 +243,6 @@ void loop() {
     Serial.println(loopCount);
     loopCount = 0;
     lastLpsMs = nowMs;
-    Serial.println(g_rollParams.phi_cmd_rad);
   }
 
   // Serial.println(snap_now.imu.ax);
