@@ -2,6 +2,11 @@
 #include "protocol/SystemStates.h" // ensure SystemState is available
 
 using namespace finware;
+
+namespace {
+constexpr uint32_t kGnssTickIntervalUs = 40000; // 25 Hz
+}
+
 SensorsFacade::SensorsFacade(uint8_t imu_cs, uint8_t imu_int, int8_t imu_rst,
                              uint8_t baro_addr,
                              uint8_t gnss_addr)
@@ -24,7 +29,7 @@ bool SensorsFacade::begin() {
         Serial.println("Barometer failed to start.");
     }
     Serial.println("Barometer initialized.");
-    // ok &= gnss_.begin(40);                            // GNSS at 40 Hz update rate
+    ok &= gnss_.begin(40);                            // GNSS at 40 Hz update rate
     if (!ok) {
         Serial.println("GNSS failed to start.");
     }
@@ -37,11 +42,16 @@ bool SensorsFacade::begin() {
 }
 
 void SensorsFacade::tick() {
-    bool ok = true;
+    const uint32_t now_us = micros();
+
     imu_.tick();
     baro_.tick();
-    gnss_.tick();
-    last_.t_us = micros();
+    if (static_cast<uint32_t>(now_us - last_gnss_tick_us_) >= kGnssTickIntervalUs) {
+        gnss_.tick();
+        last_gnss_tick_us_ = now_us;
+    }
+
+    last_.t_us = now_us;
 
     if (imu_.ok()) {
         last_.imu = imu_.latest();

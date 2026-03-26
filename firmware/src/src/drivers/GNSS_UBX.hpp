@@ -49,6 +49,7 @@ class GNSS_UBX {
     GNSS_Sample _latest{0, 0, 0, 0, 0, 0, 0, 0};
     volatile uint32_t _seq = 0;
     bool _healthy = false;
+    bool _auto_pvt_enabled = false;
     int _update_rate_hz;
     float _zero_alt_m = 0.0f;
 
