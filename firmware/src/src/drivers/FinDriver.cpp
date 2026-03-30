@@ -12,35 +12,35 @@ FinDriver::FinDriver(uint8_t i2c_addr)
 {
     // ---- CALIBRATION VALUES (example) ----
     cal_[FIN_TOP] = {
-        .center_us  = 1470,
+        .center_us  = 1455,
         .us_per_deg = 10.0f,
         .min_us     = 1200,
         .max_us     = 1800,
-        .reversed   = false
+        .reversed   = true
     };
 
     cal_[FIN_RIGHT] = {
-        .center_us  = 1525,
+        .center_us  = 1480,
         .us_per_deg = 10.0f,
         .min_us     = 1200,
         .max_us     = 1800,
-        .reversed   = false
+        .reversed   = true
     };
 
     cal_[FIN_BOTTOM] = {
-        .center_us  = 1395,
+        .center_us  = 1390,
         .us_per_deg = 10.0f,
         .min_us     = 1200,
         .max_us     = 1800,
-        .reversed   = false
+        .reversed   = true
     };
 
     cal_[FIN_LEFT] = {
-        .center_us  = 1560,
+        .center_us  = 1565,
         .us_per_deg = 10.0f,
         .min_us     = 1200,
         .max_us     = 1800,
-        .reversed   = false
+        .reversed   = true
     };
 }
 
