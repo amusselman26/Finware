@@ -45,6 +45,9 @@ struct Quat {
   // Rotate a vector from body to nav: v_nav = q * v_body * q^{-1}
   Vec3 rotate(const Vec3& v_body) const;
 
+  // Convert raw IMU quaternion (ENU body->nav) to NED body->nav.
+  static Quat enuBodyToNavToNedBodyToNav(const Quat& q_enu_bn);
+
   // Exponential map for small angle (rad): Exp(dtheta) ~ [1, 0.5*dtheta]
   static Quat expSmall(const Vec3& dtheta);
 };

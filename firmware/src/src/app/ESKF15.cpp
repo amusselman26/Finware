@@ -28,6 +28,16 @@ Vec3 Quat::rotate(const Vec3& v) const {
   return Vec3(r.x, r.y, r.z);
 }
 
+Quat Quat::enuBodyToNavToNedBodyToNav(const Quat& q_enu_bn) {
+  // ENU->NED frame swap matrix is equivalent to a 180 deg rotation around (1,1,0)/sqrt(2).
+  // Compose as q_ned_bn = q_ned_enu * q_enu_bn.
+  const float s = 0.70710678118f;
+  const Quat q_ned_enu(0.0f, s, s, 0.0f);
+  Quat q_ned_bn = q_ned_enu * q_enu_bn;
+  q_ned_bn.normalize();
+  return q_ned_bn;
+}
+
 Quat Quat::expSmall(const Vec3& dtheta) {
   // For small angles: Exp(dtheta) ~ [cos(|d|/2), sin(|d|/2) * d/|d|]
   const float a = norm(dtheta);
@@ -158,7 +168,7 @@ void ESKF15::predict(float dt, const Vec3& gyr_meas, const Vec3& acc_meas) {
   q.normalize();
 
   // Accel to nav + gravity
-  const Vec3 a_n = q.rotate(f_b) + g;
+  const Vec3 a_n = q.rotate(f_b) + g; // m/s^2;
 
   // Integrate p,v
   p += v*dt + a_n*(0.5f*dt*dt);
@@ -381,14 +391,15 @@ void ESKF15::resetErrorState_(const Vec3& dtheta) {
 }
 
 void ESKF15::updateGPSPosVel(const Vec3& pos_meas, const Vec3& vel_meas,
-                            float sigma_pos, float sigma_vel) {
+                             float sigma_pos, float sigma_vel) {
   // z = [p; v], h = [p; v]
   Mat<6,15> H = Mat<6,15>::Zero();
-  for(int i=0;i<3;i++){
-    H.a[i][i]     = 1.0f; // pos wrt dp
-    H.a[3+i][3+i] = 1.0f; // vel wrt dv
+  for (int i = 0; i < 3; i++) {
+    H.a[i][i]     = 1.0f; // position residual wrt dp
+    H.a[3 + i][3 + i] = 1.0f; // velocity residual wrt dv
   }
 
+  // Residual r = z - h(x)
   Mat<6,1> r; r.setZero();
   r.a[0][0] = pos_meas.x - p.x;
   r.a[1][0] = pos_meas.y - p.y;
@@ -397,15 +408,50 @@ void ESKF15::updateGPSPosVel(const Vec3& pos_meas, const Vec3& vel_meas,
   r.a[4][0] = vel_meas.y - v.y;
   r.a[5][0] = vel_meas.z - v.z;
 
-  Mat<6,6> Rm = Mat<6,6>::Zero();
-  const float sp2 = sigma_pos*sigma_pos;
-  const float sv2 = sigma_vel*sigma_vel;
-  for(int i=0;i<3;i++) {
-    Rm.a[i][i]     = sp2;
-    Rm.a[3+i][3+i] = sv2;
+  // Gate GPS velocity if residual is clearly bad/noisy.
+  // Position update is still allowed.
+  const float rvx = r.a[3][0];
+  const float rvy = r.a[4][0];
+  const float rvz = r.a[5][0];
+
+  bool use_vel = true;
+  if (fabsf(rvx) > 5.0f || fabsf(rvy) > 5.0f || fabsf(rvz) > 8.0f) {
+    use_vel = false;
   }
 
-  // GPS pos/vel should not affect attitude or gyro bias unless heading is observable.
+  Mat<6,6> Rm = Mat<6,6>::Zero();
+  const float sp2 = sigma_pos * sigma_pos;
+  const float sv2 = sigma_vel * sigma_vel;
+
+  // Position noise
+  Rm.a[0][0] = sp2;
+  Rm.a[1][1] = sp2;
+  Rm.a[2][2] = sp2;
+
+  if (use_vel) {
+    // Velocity noise
+    Rm.a[3][3] = sv2;
+    Rm.a[4][4] = sv2;
+    Rm.a[5][5] = sv2;
+  } else {
+    // Remove velocity part of this measurement update
+    for (int j = 0; j < 15; j++) {
+      H.a[3][j] = 0.0f;
+      H.a[4][j] = 0.0f;
+      H.a[5][j] = 0.0f;
+    }
+
+    r.a[3][0] = 0.0f;
+    r.a[4][0] = 0.0f;
+    r.a[5][0] = 0.0f;
+
+    // Keep R invertible
+    Rm.a[3][3] = 1.0f;
+    Rm.a[4][4] = 1.0f;
+    Rm.a[5][5] = 1.0f;
+  }
+
+  // GPS should not update attitude or gyro bias here
   updateMasked<6>(H, r, Rm, UPD_DP | UPD_DV);
 }
 

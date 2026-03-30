@@ -37,9 +37,11 @@ public:
 
   bool wasReset();
   uint32_t sequence() const;
+  uint32_t quatSequence() const;
   uint8_t calibration() const;
   sh2_SensorId_t activeReport() const { return _reportType; }
   uint32_t activeIntervalUs() const { return _reportIntervalUs; }
+  bool disableRotationVectorReport();
 
 private:
   static void quatToEuler(float qw, float qx, float qy, float qz, IMU_EulerDeg& outDeg);
@@ -55,6 +57,7 @@ private:
   sh2_SensorValue_t _sv{};
   IMU_Sample _latest{0, {1,0,0,0}, 0, 0,0,0, 0,0,0, 0};
   volatile uint32_t _seq = 0;
+  volatile uint32_t _qseq = 0;
   bool _healthy = false;
 };
 

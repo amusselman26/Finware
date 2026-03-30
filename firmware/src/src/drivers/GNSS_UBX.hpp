@@ -13,6 +13,9 @@ struct GNSS_Sample {
     long lat;            // latitude in degrees * 10^7
     long lon;            // longitude in degrees * 10^7
     float alt_m;          // altitude in meters
+    float v_north_mps;    // raw GNSS velocity north in m/s (NED X)
+    float v_east_mps;     // raw GNSS velocity east in m/s (NED Y)
+    float v_down_mps;     // raw GNSS velocity down in m/s (NED Z)
     float speed_mps;      // speed over ground in m/s
     float heading_deg;    // heading of motion in degrees
     uint8_t sats_used;    // number of satellites used in solution
@@ -46,9 +49,11 @@ class GNSS_UBX {
 
     private:
     // State
-    GNSS_Sample _latest{0, 0, 0, 0, 0, 0, 0, 0};
+    GNSS_Sample _latest{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     volatile uint32_t _seq = 0;
     bool _healthy = false;
+    bool _auto_pvt = false;
+    uint8_t _i2c_addr = 0x42;
     int _update_rate_hz;
     float _zero_alt_m = 0.0f;
 

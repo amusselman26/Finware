@@ -27,7 +27,7 @@ bool IMU_BNO085::setReport(sh2_SensorId_t report, uint32_t reportIntervalUs) {
 bool IMU_BNO085::enableReports_() {
   bool ok = true;
   // 1) Rotation vector (your selected flavor)
-  // ok &= _bno.enableReport(_reportType, 20000); // 5 ms = 200 Hz, which is the max rate for RV reports
+  ok &= _bno.enableReport(_reportType, _reportIntervalUs);
   // 2) Linear acceleration (m/s^2, gravity removed by sensor)
   ok &= _bno.enableReport(SH2_ACCELEROMETER, 5000);  // 5 ms = 200 Hz, which is the max rate for accel/gyro reports
   // 3) Calibrated gyroscope (rad/s)
@@ -58,6 +58,7 @@ void IMU_BNO085::tick() {
           _latest.q[3] = rv.k;
           _latest.calib = _sv.status;
           _latest.t_us  = now_us;
+          ++_qseq;
           _latest.seq   = ++_seq;
         }
         break;
@@ -71,6 +72,7 @@ void IMU_BNO085::tick() {
           _latest.q[3] = rv.k;
           _latest.calib = _sv.status;
           _latest.t_us  = now_us;
+          ++_qseq;
           _latest.seq   = ++_seq;
         }
         break;
@@ -108,6 +110,7 @@ void IMU_BNO085::tick() {
         _latest.q[3] = rv.k;
         _latest.calib = _sv.status;
         _latest.t_us  = now_us;
+        ++_qseq;
         _latest.seq   = ++_seq;
         break;
       }
@@ -130,7 +133,15 @@ bool IMU_BNO085::wasReset() {
 }
 
 uint32_t IMU_BNO085::sequence() const { return _seq; }
+uint32_t IMU_BNO085::quatSequence() const { return _qseq; }
 uint8_t IMU_BNO085::calibration() const { return _latest.calib; }
+
+bool IMU_BNO085::disableRotationVectorReport() {
+  if (!_healthy) return false;
+  const bool ok = _bno.enableReport(_reportType, 0);
+  _healthy = _healthy && ok;
+  return ok;
+}
 
 IMU_EulerDeg IMU_BNO085::latestEulerDegrees() const {
   IMU_EulerDeg out{};
