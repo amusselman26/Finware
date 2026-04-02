@@ -17,7 +17,7 @@ public:
 private:
     SystemState currentState = SystemState::BOOT;
     bool initialized = false;
-    bool armedCommanded = true; // Default to true for testing; set to false for radio
+    bool armedCommanded = false; // Default to true for testing; set to false for radio
     uint32_t lastTransitionTime = 0;
 
     // Apogee detection helper function
