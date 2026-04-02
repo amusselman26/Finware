@@ -36,10 +36,10 @@ float refLonRad = 0.0f;
 float refAltM = 0.0f;
 
 constexpr float EARTH_RADIUS_M = 6378137.0f;
-constexpr float GPS_SIGMA_POS_M = 3.0f;
+constexpr float GPS_SIGMA_POS_M = 1.0f;
 constexpr float GPS_SIGMA_VEL_MPS = 0.2f;
 constexpr float GPS_HEADING_MIN_SPEED_MPS = 3.0f;
-constexpr float BARO_SIGMA_ALT_M = 1.5f;
+constexpr float BARO_SIGMA_ALT_M = 2.0f;
 
 constexpr float GPS_FALLBACK_NORTH_M = 0.0f;
 constexpr float GPS_FALLBACK_EAST_M = 0.0f;
@@ -230,6 +230,10 @@ void loop() {
       const float eastM = dLon * EARTH_RADIUS_M * cosRefLat;
       const float downM = -(g.alt_m - refAltM);
 
+      Serial.print(northM, 6); Serial.print(",");
+      Serial.print(eastM, 6); Serial.print(",");
+      Serial.println(downM, 6); Serial.print(",");
+
       const float vNorth = g.v_north_mps;
       const float vEast = g.v_east_mps;
       const float vDown = g.v_down_mps;
@@ -288,10 +292,10 @@ void loop() {
     lastPrintTime = now;
 
     const eskf::Vec3 f_b = eskf::Vec3(s.ax, s.ay, s.az) - kf.ba;
-    const eskf::Vec3 a_n = kf.q.rotate(f_b) + kf.g;
-    Serial.print(a_n.x, 6); Serial.print(",");
-    Serial.print(a_n.y, 6); Serial.print(",");
-    Serial.print(a_n.z, 6); Serial.print(",");
+    const eskf::Vec3 a_n = kf.q.rotate(f_b);
+    // Serial.print(a_n.x, 6); Serial.print(",");
+    // Serial.print(a_n.y, 6); Serial.print(",");
+    // Serial.print(a_n.z, 6); Serial.print(",");
 
     // Print: t_us, qw, qx, qy, qz (ESKF quaternion)
     // Serial.print(now_us); Serial.print(",");
@@ -331,24 +335,26 @@ void loop() {
     // txtFile.print(last_r_gps_vel_x, 6); txtFile.print(",");
     // txtFile.print(last_r_gps_vel_y, 6); txtFile.print(",");
     // txtFile.println(last_r_gps_vel_z, 6);
-    Serial.print(now_us); Serial.print(",");
-    Serial.print(kf.p.x, 6); Serial.print(",");
-    Serial.print(kf.p.y, 6); Serial.print(",");
-    Serial.print(kf.p.z, 6); Serial.print(",");
-    Serial.print(kf.v.x, 6); Serial.print(",");
-    Serial.print(kf.v.y, 6); Serial.print(",");
-    Serial.print(kf.v.z, 6); Serial.print(",");
-    Serial.print(rollDeg, 6); Serial.print(",");
-    Serial.print(pitchDeg, 6); Serial.print(",");
-    Serial.print(yawDeg, 6); Serial.print(",");
-    Serial.print(last_r_baro, 6); Serial.print(",");
-    Serial.print(last_r_gps_pos_x, 6); Serial.print(",");
-    Serial.print(last_r_gps_pos_y, 6); Serial.print(",");
-    Serial.print(last_r_gps_pos_z, 6); Serial.print(",");
-    Serial.print(last_r_gps_vel_x, 6); Serial.print(",");
-    Serial.print(last_r_gps_vel_y, 6); Serial.print(",");
-    Serial.print(last_r_gps_vel_z, 6); Serial.print(",");
-    Serial.println(gpsVx, 6);
+
+    // Print whats below this
+    // Serial.print(now_us); Serial.print(",");
+    // Serial.print(kf.p.x, 6); Serial.print(",");
+    // Serial.print(kf.p.y, 6); Serial.print(",");
+    // Serial.print(kf.p.z, 6); Serial.print(",");
+    // Serial.print(kf.v.x, 6); Serial.print(",");
+    // Serial.print(kf.v.y, 6); Serial.print(",");
+    // Serial.print(kf.v.z, 6); Serial.print(",");
+    // Serial.print(rollDeg, 6); Serial.print(",");
+    // Serial.print(pitchDeg, 6); Serial.print(",");
+    // Serial.print(yawDeg, 6); Serial.print(",");
+    // Serial.print(last_r_baro, 6); Serial.print(",");
+    // Serial.print(last_r_gps_pos_x, 6); Serial.print(",");
+    // Serial.print(last_r_gps_pos_y, 6); Serial.print(",");
+    // Serial.print(last_r_gps_pos_z, 6); Serial.print(",");
+    // Serial.print(last_r_gps_vel_x, 6); Serial.print(",");
+    // Serial.print(last_r_gps_vel_y, 6); Serial.print(",");
+    // Serial.print(last_r_gps_vel_z, 6); Serial.print(",");
+    // Serial.println(gpsVx, 6);
     logRowCount++;
   }
 

@@ -66,7 +66,7 @@ lines = {}
 v_north_text = fig.text(0.02, 0.98, "v_north_mps: --", ha="left", va="top")
 
 def setup_lines():
-    for key in ["a_n.x", "a_n.y", "a_n.z"]:
+    for key in ["p_x", "p_y", "p_z"]:
         lines[key], = ax_pos.plot([], [], label=key)
 
     for key in ["v_x", "v_y", "v_z"]:
@@ -76,7 +76,7 @@ def setup_lines():
                 "r_gps_vel_x", "r_gps_vel_y", "r_gps_vel_z"]:
         lines[key], = ax_res.plot([], [], label=key)
 
-    ax_pos.set_title("a_n")
+    ax_pos.set_title("Position")
     ax_vel.set_title("Velocity")
     ax_res.set_title("Residuals")
 

@@ -29,7 +29,7 @@ bool IMU_BNO085::enableReports_() {
   // 1) Rotation vector (your selected flavor)
   ok &= _bno.enableReport(_reportType, _reportIntervalUs);
   // 2) Linear acceleration (m/s^2, gravity removed by sensor)
-  ok &= _bno.enableReport(SH2_ACCELEROMETER, 5000);  // 5 ms = 200 Hz, which is the max rate for accel/gyro reports
+  ok &= _bno.enableReport(SH2_LINEAR_ACCELERATION, 5000);  // 5 ms = 200 Hz, which is the max rate for accel/gyro reports
   // 3) Calibrated gyroscope (rad/s)
   ok &= _bno.enableReport(SH2_GYROSCOPE_CALIBRATED, 5000); // 5 ms = 200 Hz, which is a reasonable rate for gyro data
 
@@ -79,8 +79,8 @@ void IMU_BNO085::tick() {
       }
 
       // --- Accelerometer (m/s^2) ---
-      case SH2_ACCELEROMETER: {
-        const auto &a = _sv.un.accelerometer; // m/s^2
+      case SH2_LINEAR_ACCELERATION: {
+        const auto &a = _sv.un.linearAcceleration; // m/s^2
         _latest.ax = a.x;
         _latest.ay = a.y;
         _latest.az = a.z;
