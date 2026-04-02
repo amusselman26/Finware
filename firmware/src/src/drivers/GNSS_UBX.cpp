@@ -16,11 +16,7 @@ bool GNSS_UBX::begin(int update_rate_hz) {
     _healthy = true;
     _gnss.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
     _gnss.setNavigationFrequency(_update_rate_hz);
-    // Enable automatic NAV-PVT and require explicit checkUblox parsing in tick().
-    if (!_gnss.setAutoPVT(true, false)) {
-        _healthy = false;
-        return false;
-    }
+    _auto_pvt_enabled = _gnss.setAutoPVT(true, false); // Non-blocking PVT: parse only what has already arrived
     _gnss.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT); //Save (only) the communications port settings to flash and BBR
     return true;
 }
@@ -28,8 +24,11 @@ bool GNSS_UBX::begin(int update_rate_hz) {
 void GNSS_UBX::tick() {
     if (!_healthy) return;
 
-    // Parse incoming UBX bytes and update cached NAV-PVT data.
-    if (_gnss.checkUblox(UBX_CLASS_NAV, UBX_NAV_PVT)) {
+    // Pull any pending bytes from the GNSS without waiting for new data.
+    _gnss.checkUblox();
+
+    const bool has_new_pvt = _auto_pvt_enabled ? _gnss.getPVT() : _gnss.getPVT(0);
+    if (has_new_pvt) {
         _latest.t_us = micros();
         _latest.lat = _gnss.getLatitude();
         _latest.lon = _gnss.getLongitude();
