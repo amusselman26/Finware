@@ -24,7 +24,7 @@ bool SensorsFacade::begin() {
         Serial.println("Barometer failed to start.");
     }
     Serial.println("Barometer initialized.");
-    // ok &= gnss_.begin(40);                            // GNSS at 40 Hz update rate
+    ok &= gnss_.begin(40);                            // GNSS at 40 Hz update rate
     if (!ok) {
         Serial.println("GNSS failed to start.");
     }
