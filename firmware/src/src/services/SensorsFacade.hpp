@@ -25,6 +25,7 @@ class SensorsFacade {
                   uint8_t gnss_addr = 0x42);
     bool begin();
     void tick();
+    void calibrateAltitudeReferences();
         // Return a copy of the latest snapshot
     
     // Update FSM state

@@ -36,6 +36,22 @@ bool SensorsFacade::begin() {
     return ok;
 }
 
+void SensorsFacade::calibrateAltitudeReferences() {
+    if (baro_.ok()) {
+        baro_.tick();
+        baro_.calibrateAtm();
+        baro_.tick();
+        last_.baro = baro_.latest();
+    }
+
+    if (gnss_.ok()) {
+        gnss_.calibrateAltitude();
+        last_.gnss = gnss_.latest();
+    }
+
+    last_.t_us = micros();
+}
+
 void SensorsFacade::tick() {
     bool ok = true;
     imu_.tick();

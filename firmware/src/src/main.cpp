@@ -7,7 +7,7 @@
 #include "drivers/SDLogger.h"          // sdBegin, openNextLog, writeSnapshot, flushLog, closeLog
 #include "drivers/LoRaRadio.h"         // wrapper around RH_RF95 from earlier
 #include "app/StateMachine.h"         // FSM
-#include "drivers/FinDriver.h"         // add this
+#include "drivers/FinDriver.h"
 #include "app/RocketAttitudeController.hpp"
 
 using namespace finware;
@@ -158,11 +158,11 @@ void loop() {
       fins.commandNeutral();
     }
 
-    else if (cmd == "CALIB_BARO") {
-      sensors.baro_.calibrateAtm();
-      sensors.baro_.tick(); // update immediately after calibration
-      float alt = sensors.baro().altitude_m;
-      String msg = "Barometer calibrated. Current altitude: " + String(alt, 2) + " m";
+    else if (cmd.equalsIgnoreCase("CALIB_BARO")) {
+      sensors.calibrateAltitudeReferences();
+      float baroAlt = sensors.baro().altitude_m;
+      float gnssAlt = sensors.gnss().alt_m;
+      String msg = "Baro+GNSS calibrated. Baro alt: " + String(baroAlt, 2) + " m, GNSS alt: " + String(gnssAlt, 2) + " m";
       LoRa.sendText(msg);
     }
 
