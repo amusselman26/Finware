@@ -112,10 +112,12 @@ void loop() {
   String cmd;
   if (LoRa.receiveMessage(cmd, 1)) {      // 0 ms = poll, no blocking
     cmd.trim();
+    String cmd_upper = cmd;
+    cmd_upper.toUpperCase();
     Serial.print("LoRa RX: ");
     Serial.println(cmd);
 
-    if (cmd == "ARM") {
+    if (cmd_upper == "ARM") {
       fsm.setArmCommand(true);
         // After all sensors are initialized, switch IMU to gyro-integrated RV
       if (!sensors.setIMUReport(SH2_GYRO_INTEGRATED_RV, 5000)) {
@@ -128,7 +130,7 @@ void loop() {
       roll_pd_reset(g_rollState, 0.0f);
     }
 
-    else if (cmd == "ABORT") {
+    else if (cmd_upper == "ABORT") {
       fsm.transitionTo(SystemState::ABORT, &sensors); 
       LoRa.sendText("Abort command received. Transitioning to ABORT state.");
       // Disable roll controller and (was) drive fins to neutral on abort
@@ -136,15 +138,16 @@ void loop() {
       fins.commandNeutral();
     }
 
-    else if (cmd == "CALIB_BARO") {
+    else if (cmd_upper == "CALIB_BARO") {
       sensors.baro_.calibrateAtm();
+      sensors.calibrateGNSSAltitude();
       sensors.baro_.tick(); // update immediately after calibration
       float alt = sensors.baro().altitude_m;
       String msg = "Barometer calibrated. Current altitude: " + String(alt, 2) + " m";
       LoRa.sendText(msg);
     }
 
-    else if (cmd == "TEST") {
+    else if (cmd_upper == "TEST") {
       fins.finTestSequence(fins);
       LoRa.sendText("Fin test sequence executed (fins disabled).");
     }
@@ -243,7 +246,7 @@ void loop() {
     // Serial.println("Fin angles (deg): " + String(u_deg, 2));
   }
 
-  
+  // Remove before flight
   // --- Loops per second over Serial ---
   static uint32_t loopCount = 0;
   static uint32_t lastLpsMs = 0;
@@ -256,7 +259,6 @@ void loop() {
     Serial.println(g_rollParams.phi_cmd_rad);
   }
 
-  // Serial.println(snap_now.imu.ax);
   // Periodic SD flush (1 s)
   static uint32_t lastFlushMs = 0;
   if (nowMs - lastFlushMs >= 1000u) {

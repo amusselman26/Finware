@@ -35,6 +35,9 @@ class SensorsFacade {
         return imu_.setReport(report, reportIntervalUs);
     }
 
+    // Re-zero GNSS altitude to the current GNSS altitude reading.
+    void calibrateGNSSAltitude() { gnss_.calibrateAltitude(); }
+
     finware::SensorsSnapshot snapshot() const { return last_; }
 
     // Direct (read-only) access to last-good samples
