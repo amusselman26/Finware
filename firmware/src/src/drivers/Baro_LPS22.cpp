@@ -2,6 +2,10 @@
 
 using namespace finware;
 
+namespace {
+constexpr uint8_t kMaxConsecutiveReadFailures = 3;
+}
+
 Baro_LPS22::Baro_LPS22(uint8_t i2c_addr)
 : _i2c_addr(i2c_addr) {}
 
@@ -25,11 +29,18 @@ void Baro_LPS22::tick() {
 
     sensors_event_t pressure, temp;
     if (_lps22.getEvent(&pressure, &temp)) {
+        _health.ctr.errors = 0;
         _latest.t_us = micros();
         _latest.pressure_hPa = pressure.pressure;
         _latest.temperature_C = temp.temperature;
         _latest.altitude_m = Baro_LPS22::pressureToAltitude(_latest.pressure_hPa, _sea_level_hPa);
         _latest.seq = ++_seq;
+        markProduced(_health.ctr, _latest.t_us);
+    } else {
+        markError(_health.ctr);
+        if (_health.ctr.errors >= kMaxConsecutiveReadFailures) {
+            _healthy = false;
+        }
     }
 }
 

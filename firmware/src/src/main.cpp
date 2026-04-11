@@ -45,6 +45,9 @@ RollPDParams g_rollParams = {
 RollPDState g_rollState{false, 0.0f};
 bool g_rollControlEnabled = false;   // becomes true after ARM command
 
+constexpr uint8_t  SD_FAIL_THRESHOLD = 3;      // consecutive write fails before recovery
+constexpr uint32_t SD_RECOVER_PERIOD_MS = 500; // recovery retry cadence
+
 // Minimal binary packet (little-endian) for LLA telemetry
 // Must match the ground receiver's TelemetryLLA layout.
 struct __attribute__((packed)) TelemetryLLA {
@@ -69,6 +72,10 @@ void setup() {
   Serial.println("Finware Flight Computer Starting...");\
 
   Wire.begin();
+#if defined(WIRE_HAS_TIMEOUT)
+  // Prevent indefinite I2C blocking if a device is unplugged mid-run.
+  Wire.setWireTimeout(3000, true); // 3 ms timeout, reset bus on timeout
+#endif
   Serial.println("I2C initialized.");
 
   // --- Sensors ---
@@ -139,12 +146,16 @@ void loop() {
     }
 
     else if (cmd_upper == "CALIB_BARO") {
-      sensors.baro_.calibrateAtm();
-      sensors.calibrateGNSSAltitude();
-      sensors.baro_.tick(); // update immediately after calibration
-      float alt = sensors.baro().altitude_m;
-      String msg = "Barometer calibrated. Current altitude: " + String(alt, 2) + " m";
-      LoRa.sendText(msg);
+      if (!sensors.baro_.ok()) {
+        LoRa.sendText("Barometer unavailable; CALIB_BARO skipped.");
+      } else {
+        sensors.baro_.calibrateAtm();
+        sensors.calibrateGNSSAltitude();
+        sensors.baro_.tick(); // update immediately after calibration
+        float alt = sensors.baro().altitude_m;
+        String msg = "Barometer calibrated. Current altitude: " + String(alt, 2) + " m";
+        LoRa.sendText(msg);
+      }
     }
 
     else if (cmd_upper == "TEST") {
@@ -288,7 +299,30 @@ void loop() {
   rec.snap = snap_now;  // copy existing snapshot contents
   rec.fin_cmd_rad  = u_sent_rad;
 
+  static uint8_t sdWriteFailCount = 0;
+  static uint32_t lastSdRecoverAttemptMs = 0;
+
   if (!writeRecordEx(&rec, sizeof(rec))) {
-    LoRa.sendText("Failed to write extend ed log record.");
+    if (sdWriteFailCount < 255) {
+      ++sdWriteFailCount;
+    }
+
+    LoRa.sendText("Failed to write extended log record.");
+    Serial.println("Error writing extended log record!");
+
+    if (sdWriteFailCount >= SD_FAIL_THRESHOLD &&
+        (nowMs - lastSdRecoverAttemptMs) >= SD_RECOVER_PERIOD_MS) {
+      lastSdRecoverAttemptMs = nowMs;
+
+      if (recoverLog(binFilename, txtFilename)) {
+        sdWriteFailCount = 0;
+        Serial.println("SD recovery succeeded.");
+        LoRa.sendText("SD recovery succeeded.");
+      } else {
+        Serial.println("SD recovery failed.");
+      }
+    }
+  } else {
+    sdWriteFailCount = 0;
   }
 }

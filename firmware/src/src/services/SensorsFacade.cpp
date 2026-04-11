@@ -4,6 +4,7 @@
 using namespace finware;
 
 namespace {
+constexpr uint32_t kBaroTickIntervalUs = 20000; // 50 Hz
 constexpr uint32_t kGnssTickIntervalUs = 40000; // 25 Hz
 }
 
@@ -16,21 +17,21 @@ SensorsFacade::SensorsFacade(uint8_t imu_cs, uint8_t imu_int, int8_t imu_rst,
 }
 
 bool SensorsFacade::begin() {
-    bool ok = true;
-    ok &= imu_.begin(); // 200 Hz quaternion
-    if (!ok) {
+    const bool imuOk = imu_.begin(); // 200 Hz quaternion
+    if (!imuOk) {
         Serial.println("IMU failed to start.");
 
     }
     delay(200);
     Serial.println("IMU initialized.");
-    ok &= baro_.begin(LPS22_RATE_50_HZ);            // 50 Hz baro
-    if (!ok) {
+    const bool baroOk = baro_.begin(LPS22_RATE_50_HZ);            // 50 Hz baro
+    if (!baroOk) {
         Serial.println("Barometer failed to start.");
+        Serial.println("Continuing without barometer.");
     }
     Serial.println("Barometer initialized.");
-    ok &= gnss_.begin(40);                            // GNSS at 40 Hz update rate
-    if (!ok) {
+    const bool gnssOk = gnss_.begin(40);                            // GNSS at 40 Hz update rate
+    if (!gnssOk) {
         Serial.println("GNSS failed to start.");
     }
     Serial.println("GNSS initialized.");
@@ -38,14 +39,17 @@ bool SensorsFacade::begin() {
     // Initialize battery monitor
     batteryMonitor_.begin();
     last_.batteryVoltage = batteryMonitor_.readVoltage();
-    return ok;
+    return imuOk && gnssOk;
 }
 
 void SensorsFacade::tick() {
     const uint32_t now_us = micros();
 
     imu_.tick();
-    baro_.tick();
+    if (static_cast<uint32_t>(now_us - last_baro_tick_us_) >= kBaroTickIntervalUs) {
+        baro_.tick();
+        last_baro_tick_us_ = now_us;
+    }
     if (static_cast<uint32_t>(now_us - last_gnss_tick_us_) >= kGnssTickIntervalUs) {
         gnss_.tick();
         last_gnss_tick_us_ = now_us;

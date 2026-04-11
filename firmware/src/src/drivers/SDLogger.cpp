@@ -74,6 +74,48 @@ bool writeRecordEx(const void* data, size_t len) {
   return (n == len);
 }
 
+bool recoverLog(const char* binName, const char* txtName) {
+    Serial.print("[INFO] recoverLog called for ");
+    Serial.print(binName);
+    Serial.print(" + ");
+    Serial.println(txtName);
+
+    // Close stale handles first so the SD stack can rebind cleanly.
+    if (binFile) {
+        binFile.flush();
+        binFile.close();
+        Serial.println("[INFO] Closed stale binary log file handle for recovery.");
+    }
+    if (txtFile) {
+        txtFile.flush();
+        txtFile.close();
+        Serial.println("[INFO] Closed stale text log file handle for recovery.");
+    }
+
+    if (!SD.begin()) {
+        Serial.println("[ERROR] SD re-init failed during log recovery.");
+        return false;
+    }
+
+    if (!SD.exists(binName) || !SD.exists(txtName)) {
+        Serial.println("[ERROR] One or both log files not found during recovery.");
+        return false;
+    }
+
+    binFile = SD.open(binName, FILE_WRITE);
+    txtFile = SD.open(txtName, FILE_WRITE);
+    if (!(binFile && txtFile)) {
+        Serial.println("[ERROR] Failed to reopen log files during recovery.");
+        if (binFile) binFile.close();
+        if (txtFile) txtFile.close();
+        return false;
+    }
+
+    txtFile.println("[RECOVERY] SD log file handles reopened.");
+    txtFile.flush();
+    return true;
+}
+
 
 void writeText(const char* tag, const String& msg) {
     if (!txtFile) return;

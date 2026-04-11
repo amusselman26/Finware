@@ -51,6 +51,7 @@ class SensorsFacade {
     finware::IMU_BNO085 imu_;
     finware::GNSS_UBX gnss_;
     finware::BatteryMonitor batteryMonitor_{};
+    uint32_t last_baro_tick_us_ = 0;
     uint32_t last_gnss_tick_us_ = 0;
 
     finware::SensorsSnapshot last_{};

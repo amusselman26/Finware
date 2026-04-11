@@ -12,9 +12,9 @@
 // #define FAST_MODE
 
 // For SPI mode, we also need a RESET 
-//#define BNO08X_RESET 5
+#define BNO08X_RESET 5
 // but not for I2C or UART
-#define BNO08X_RESET -1
+// #define BNO08X_RESET -1
 
 struct euler_t {
   float yaw;
@@ -36,9 +36,10 @@ sh2_SensorValue_t sensorValue;
 #endif
 void setReports(sh2_SensorId_t reportType, long report_interval) {
   Serial.println("Setting desired reports");
-  if (! bno08x.enableReport(reportType, report_interval)) {
+  if (!bno08x.enableReport(reportType, report_interval)) {
     Serial.println("Could not enable stabilized remote vector");
   }
+  Serial.println("Enabled reports.");
 }
 
 void setup(void) {
@@ -49,9 +50,9 @@ void setup(void) {
   Serial.println("Adafruit BNO08x test!");
 
   // Try to initialize!
-  if (!bno08x.begin_I2C()) {
+  //if (!bno08x.begin_I2C()) {
   //if (!bno08x.begin_UART(&Serial1)) {  // Requires a device with > 300 byte UART buffer!
-  //if (!bno08x.begin_SPI(BNO08X_CS, BNO08X_INT)) {
+  if (!bno08x.begin_SPI(BNO08X_CS, BNO08X_INT)) {
     Serial.println("Failed to find BNO08x chip");
     while (1) { delay(10); }
   }
