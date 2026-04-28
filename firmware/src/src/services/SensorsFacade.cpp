@@ -19,20 +19,6 @@ bool SensorsFacade::begin() {
     }
     delay(200);
     Serial.println("IMU initialized.");
-    ok &= baro_.begin(LPS22_RATE_50_HZ);            // 50 Hz baro
-    if (!ok) {
-        Serial.println("Barometer failed to start.");
-    }
-    Serial.println("Barometer initialized.");
-    ok &= gnss_.begin(40);                            // GNSS at 40 Hz update rate
-    if (!ok) {
-        Serial.println("GNSS failed to start.");
-    }
-    Serial.println("GNSS initialized.");
-
-    // Initialize battery monitor
-    batteryMonitor_.begin();
-    last_.batteryVoltage = batteryMonitor_.readVoltage();
     return ok;
 }
 

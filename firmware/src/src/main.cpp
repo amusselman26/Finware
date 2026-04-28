@@ -105,22 +105,6 @@ void setup() {
 
   
   // --- LoRa ---
-  if (!LoRa.begin(/*txPower=*/23)) {
-    Serial.println("LoRa init failed!");
-    while (true) delay(1000);
-  }
-  Serial.println("LoRa ready.");
-
-  // --- SD ---
-  if (!sdBegin()) {
-    Serial.println("SD init failed!");
-    while (true) delay(1000);
-  }
-  if (!openNextLog(binFilename, txtFilename)) {
-    Serial.println("Failed to open next log file!");
-    while (true) delay(1000);               
-  }
-  Serial.print("Logging to "); Serial.println(txtFilename);
 
   // --- Fins (disabled) ---
   Serial.println("I'm finning it");
@@ -132,55 +116,10 @@ void setup() {
 
 void loop() {
   static SystemState lastState = fsm.getState();
-  
-  // Check for LoRa commands (TEXT packets with 1-byte type header)
-  String cmd;
-  if (LoRa.receiveMessage(cmd, 1)) {      // 0 ms = poll, no blocking
-    cmd.trim();
-    Serial.print("LoRa RX: ");
-    Serial.println(cmd);
-
-    if (cmd == "ARM") {
-      fsm.setArmCommand(true);
-        // After all sensors are initialized, switch IMU to gyro-integrated RV
-      if (!sensors.setIMUReport(SH2_GYRO_INTEGRATED_RV, 5000)) {
-        Serial.println("Failed to set IMU report to GYRO_INTEGRATED_RV");
-      } else {
-        LoRa.sendText("Armed. IMU report set to GYRO_INTEGRATED_RV.");
-      }
-      g_attControlEnabled = false;
-    }
-
-    else if (cmd == "ABORT") {
-      fsm.transitionTo(SystemState::ABORT, &sensors); 
-      LoRa.sendText("Abort command received. Transitioning to ABORT state.");
-      g_attControlEnabled = false;
-      fins.commandNeutral();
-    }
-
-    else if (cmd.equalsIgnoreCase("CALIB_BARO")) {
-      sensors.calibrateAltitudeReferences();
-      float baroAlt = sensors.baro().altitude_m;
-      float gnssAlt = sensors.gnss().alt_m;
-      String msg = "Baro+GNSS calibrated. Baro alt: " + String(baroAlt, 2) + " m, GNSS alt: " + String(gnssAlt, 2) + " m";
-      LoRa.sendText(msg);
-    }
-
-    else if (cmd == "TEST") {
-      fins.finTestSequence(fins);
-      LoRa.sendText("Fin test sequence executed (fins disabled).");
-    }
-    
-    else {
-      Serial.println("LoRa: Unknown command");
-    }
-  }
 
   // Radio messages for state transitions
   SystemState current = fsm.getState();
   if (current != lastState) {
-    String message = "STATE CHANGED TO: " + fsm.stateName(current);
-    LoRa.sendText(message);
     // Enable closed-loop fin control at launch.
     if (current == SystemState::LAUNCH) {
       g_attControlEnabled = true;
@@ -233,49 +172,25 @@ void loop() {
         std::max(fabsf(fin_cmd_rad.d3), fabsf(fin_cmd_rad.d4)));
   }
 
-  
-  // --- Loops per second over Serial ---
-  static uint32_t loopCount = 0;
-  static uint32_t lastLpsMs = 0;
-  loopCount++;
-  if (nowMs - lastLpsMs >= 1000u) {
-    Serial.print("Loops per second: ");
-    Serial.println(loopCount);
-    loopCount = 0;
-    lastLpsMs = nowMs;
+
+  static uint32_t lastQuatMs = 0;
+  if (nowMs - lastQuatMs >= 20u) { // 50 Hz
+    // Send quaternion
+    Serial.print("Q:");
+    for (int i = 0; i < 4; ++i) {
+      Serial.print(imu.q[i], 6);
+      if (i < 3) Serial.print(",");
+    }
+    Serial.println();
   }
-
-  // Serial.println(snap_now.imu.ax);
-  // Periodic SD flush (1 s)
-  static uint32_t lastFlushMs = 0;
-  if (nowMs - lastFlushMs >= 1000u) {
-    flushLog();
-    lastFlushMs = nowMs;
-  }
-
-  // Send lat, lon, alt over LoRa every 1 s
-  static uint32_t lastTxMs = 0;
-  if (nowMs - lastTxMs >= 1000u) {
-    TelemetryLLA pkt;
-    // Degrees * 1e7 to match receiver expectations
-    pkt.lat_e7 = static_cast<int32_t>(snap_now.gnss.lat * 1e7);
-    pkt.lon_e7 = static_cast<int32_t>(snap_now.gnss.lon * 1e7);
-    pkt.alt_m  = snap_now.baro.altitude_m;
-    pkt.t_ms   = nowMs;
-
-    // Send as a typed LLA packet (1-byte header + TelemetryLLA payload)
-    LoRa.sendTyped(LoRaPacketType::LLA,
-                   reinterpret_cast<const uint8_t*>(&pkt),
-                   static_cast<uint8_t>(sizeof(pkt)));
-    lastTxMs = nowMs;
-  }
-
-  // Log a combined flight record (snapshot + fin command) to SD
-  FlightRecord rec;
-  rec.snap = snap_now;  // copy existing snapshot contents
-  rec.fin_cmd_rad  = u_sent_rad;
-
-  if (!writeRecordEx(&rec, sizeof(rec))) {
-    LoRa.sendText("Failed to write extend ed log record.");
-  }
+  // // --- Loops per second over Serial ---
+  // static uint32_t loopCount = 0;
+  // static uint32_t lastLpsMs = 0;
+  // loopCount++;
+  // if (nowMs - lastLpsMs >= 1000u) {
+  //   Serial.print("Loops per second: ");
+  //   Serial.println(loopCount);
+  //   loopCount = 0;
+  //   lastLpsMs = nowMs;
+  // }
 }
